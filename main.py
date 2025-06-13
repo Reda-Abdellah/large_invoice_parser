@@ -5,7 +5,7 @@ import argparse
 from pathlib import Path
 from src.pipeline.invoice_pipeline import InvoicePipeline
 import os
-os.environ['NO_PROXY'] = "http://127.0.0.1,localhost"
+os.environ['NO_PROXY'] = "http://127.0.0.1,localhost,http://10.8.13.21"
 
 
 def load_config(config_path: str = "config.yaml") -> dict:

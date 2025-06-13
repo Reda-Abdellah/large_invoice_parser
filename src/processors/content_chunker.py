@@ -1,11 +1,19 @@
 # src/processors/content_chunker.py
 from typing import List, Dict, Any
+from ..utils.ollama_client import EnhancedOllamaClient  # Add this import
 
 class ContentChunker:
-    def __init__(self, max_chunk_size: int = 2000, context_window_size: int = 8192):
-        self.max_chunk_size = max_chunk_size
-        self.context_window_size = context_window_size  
-    
+    def __init__(self, config: Dict[str, Any]):
+        self.config = config or {}
+        self.max_chunk_size = config.get('max_chunk_size', 2000)
+        self.context_window_size = config.get('context_window_size', 8192)
+        
+        self.ollama_client = EnhancedOllamaClient(
+            base_url=config.get('ollama_base_url', 'http://localhost:11434'),
+            context_window_size=self.context_window_size,
+            timeout=config.get('timeout', 300)
+        )
+
     def chunk_by_structure(self, structure: Dict[str, Any], raw_markdown: str) -> List[Dict[str, Any]]:
         """Chunk content based on document structure and context window size"""
         chunks = []

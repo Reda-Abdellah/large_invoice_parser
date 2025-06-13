@@ -1,4 +1,5 @@
 # src/processors/structure_extractor.py
+import json
 import re
 import markdown
 from bs4 import BeautifulSoup
@@ -53,35 +54,139 @@ class StructureExtractor:
             Format as a structured list showing the offer hierarchy.
             """
         )
+
+        self.extraction_prompt = PromptTemplate(
+            input_variables=["document_content"],
+            template="""
+            Extract the hierarchical structure from this document. Return a JSON array of sections:
+
+            Document Content:
+            {document_content}
+
+            Return the structure in this JSON format:
+            [
+                {{
+                    "title": "section title",
+                    "level": level_number,
+                    "content": "section content",
+                    "content_type": "work_category|technical_items|materials|labor|pricing|general",
+                    "estimated_items": number_of_items
+                }}
+            ]
+
+            Guidelines:
+            - Identify headers and section breaks even if not explicitly marked
+            - Preserve the hierarchical relationships (use level 1-6)
+            - Include the content between sections
+            - Categorize content types based on terminology and patterns
+            - Estimate number of items based on line patterns and technical specifications
+            """
+        )
     
-    def extract_structure_markdown(self, markdown_content: str) -> List[Dict[str, Any]]:
-        """Extract structure using markdown parsing for offer documents"""
-        html = markdown.markdown(markdown_content)
-        soup = BeautifulSoup(html, 'html.parser')
+    def extract_structure_markdown(self, content: str) -> List[Dict[str, Any]]:
+        """Extract document structure using LLM"""
+        try:
+            # Check content size and truncate if needed
+            context_check = self.ollama_client.check_context_requirements(
+                content, 
+                self.config.get('context_window_size', 8192)
+            )
+            
+            if not context_check['fits_in_context']:
+                print("Warning: Content too large, splitting into chunks...")
+                return self._process_large_content(content)
+            
+            # Process with LLM
+            response = self.llm.invoke(
+                self.extraction_prompt.format(document_content=content)
+            )
+            
+            # Parse JSON response
+            try:
+                structure = json.loads(response)
+                if not isinstance(structure, list):
+                    raise ValueError("Expected JSON array")
+                return structure
+            except json.JSONDecodeError:
+                print("Warning: LLM response not valid JSON, falling back to basic structure")
+                return self._fallback_structure_extraction(content)
+                
+        except Exception as e:
+            print(f"Structure extraction error: {e}")
+            return self._fallback_structure_extraction(content)
+
+    def _process_large_content(self, content: str) -> List[Dict[str, Any]]:
+        """Handle large documents by processing in chunks"""
+        # Split content into manageable chunks (e.g., by paragraphs or sections)
+        chunks = self._split_into_chunks(content)
+        structures = []
         
+        for chunk in chunks:
+            chunk_structure = self.extract_structure_markdown(chunk)
+            structures.extend(chunk_structure)
+        
+        return self._merge_chunk_structures(structures)
+
+    def _fallback_structure_extraction(self, content: str) -> List[Dict[str, Any]]:
+        """Basic structure extraction as fallback"""
+        lines = content.split('\n')
         structure = []
-        headers = soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
+        current_section = None
         
-        for header in headers:
-            level = int(header.name[1])
-            title = header.get_text().strip()
-            
-            # Get content until next header of same or higher level
-            content = self._extract_section_content(header, level)
-            
-            # Analyze content type for offer processing
-            content_type = self._analyze_content_type(title, content)
-            
-            structure.append({
-                'title': title,
-                'level': level,
-                'content': content,
-                'content_type': content_type,
-                'start_position': str(header),
-                'estimated_items': self._estimate_item_count(content)
-            })
+        for line in lines:
+            if line.strip().startswith('#') or line.strip().isupper():
+                if current_section:
+                    structure.append(current_section)
+                current_section = {
+                    'title': line.strip('# '),
+                    'level': 1,
+                    'content': '',
+                    'content_type': 'general',
+                    'estimated_items': 0
+                }
+            elif current_section:
+                current_section['content'] += line + '\n'
+        
+        if current_section:
+            structure.append(current_section)
         
         return structure
+
+    def _split_into_chunks(self, content: str) -> List[str]:
+        """Split content into processable chunks"""
+        max_chunk_size = self.config.get('max_chunk_size', 2000)
+        chunks = []
+        lines = content.split('\n')
+        current_chunk = []
+        current_size = 0
+        
+        for line in lines:
+            line_size = len(line)
+            if current_size + line_size > max_chunk_size and current_chunk:
+                chunks.append('\n'.join(current_chunk))
+                current_chunk = []
+                current_size = 0
+            current_chunk.append(line)
+            current_size += line_size
+        
+        if current_chunk:
+            chunks.append('\n'.join(current_chunk))
+        
+        return chunks
+
+    def _merge_chunk_structures(self, structures: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Merge structures from different chunks"""
+        merged = []
+        current_level = 1
+        
+        for structure in structures:
+            if merged and structure.get('level', 1) > current_level:
+                merged[-1]['content'] += '\n' + structure['content']
+            else:
+                merged.append(structure)
+                current_level = structure.get('level', 1)
+        
+        return merged
     
     def _extract_section_content(self, header, level: int) -> str:
         """Extract content between current header and next header of same/higher level"""

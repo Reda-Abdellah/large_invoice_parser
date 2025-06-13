@@ -11,8 +11,7 @@ class InvoicePipeline:
     def __init__(self, config: Dict[str, Any]):
         self.config = config
         self.structure_extractor = StructureExtractor(config)
-        self.content_chunker = ContentChunker(config.get('max_chunk_size', 2000), 
-                                                config.get('context_window_size', 8192))
+        self.content_chunker = ContentChunker(config)
         self.section_analyzer = SectionAnalyzer(config)
         self.json_merger = JsonMerger()
         
