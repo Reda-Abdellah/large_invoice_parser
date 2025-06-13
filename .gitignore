@@ -1,0 +1,5 @@
+data/
+outputs/
+recursive_analyse/
+__pycache__/
+config.yaml

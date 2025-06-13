@@ -1,0 +1,21 @@
+# config.yaml
+# Model configuration
+# structure_model: "llama3.2:3b"  # Lighter model for structure extraction
+# analysis_model: "llama3.2:7b"   # More capable model for detailed analysis
+structure_model: "deepseek-r1:latest"  
+analysis_model: "deepseek-r1:latest"
+
+# Processing configuration
+max_chunk_size: 8000  # Maximum characters per chunk
+overlap_size: 2000     # Overlap between chunks
+
+# Ollama configuration
+ollama_base_url: "http://localhost:11434"
+timeout: 300
+context_window_size: 8192  # Context window size in tokens (default: 2048)
+max_context_window: 32768  # Maximum context window for large documents
+
+# Output configuration
+output_format: "json"
+include_raw_content: false
+include_processing_metadata: true
