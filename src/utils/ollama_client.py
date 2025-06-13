@@ -18,14 +18,8 @@ class EnhancedOllamaClient:
         
         return Ollama(
             model=model_name,
-            base_url=self.base_url,
+            num_ctx=effective_context_size,
             timeout=self.timeout,
-            # Set context window size via model options
-            model_kwargs={
-                "options": {
-                    "num_ctx": effective_context_size
-                }
-            }
         )
     
     def estimate_tokens(self, text: str) -> int:
@@ -37,7 +31,7 @@ class EnhancedOllamaClient:
                                  context_size: int) -> Dict[str, Any]:
         """Check if text fits within context window"""
         estimated_tokens = self.estimate_tokens(text)
-        
+        # print(estimated_tokens <= context_size)
         return {
             "estimated_tokens": estimated_tokens,
             "context_size": context_size,

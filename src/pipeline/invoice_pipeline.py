@@ -10,9 +10,10 @@ from ..processors.json_merger import JsonMerger
 class InvoicePipeline:
     def __init__(self, config: Dict[str, Any]):
         self.config = config
-        self.structure_extractor = StructureExtractor(config.get('structure_model', 'llama3.2:3b'))
-        self.content_chunker = ContentChunker(config.get('max_chunk_size', 2000))
-        self.section_analyzer = SectionAnalyzer(config.get('analysis_model', 'llama3.2:7b'))
+        self.structure_extractor = StructureExtractor(config)
+        self.content_chunker = ContentChunker(config.get('max_chunk_size', 2000), 
+                                                config.get('context_window_size', 8192))
+        self.section_analyzer = SectionAnalyzer(config)
         self.json_merger = JsonMerger()
         
         # Build the graph

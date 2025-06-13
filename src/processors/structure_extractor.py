@@ -4,7 +4,6 @@ import markdown
 from bs4 import BeautifulSoup
 from typing import List, Dict, Any
 from langchain.prompts import PromptTemplate
-from ..models.invoice_models import InvoiceSection, DocumentStructure
 from ..utils.ollama_client import EnhancedOllamaClient
 
 class StructureExtractor:
@@ -30,27 +29,33 @@ class StructureExtractor:
         self.structure_prompt = PromptTemplate(
             input_variables=["markdown_content"],
             template="""
-            Analyze this markdown document and extract its hierarchical structure.
+            Analyze this construction/engineering offer document and extract its hierarchical structure.
             Focus on identifying:
-            1. Main sections (# headers)
-            2. Subsections (## headers)
-            3. Sub-subsections (### headers)
-            4. Key content areas that contain invoice data
+            1. Main offer sections (# headers) - these become BASE groups
+            2. Sub-sections (## headers) - these become SUB groups  
+            3. Item categories (### headers) - these contain actual offer items
+            4. Technical specifications and pricing areas
             
             Document:
             {markdown_content}
             
-            Return a simple hierarchical structure with:
-            - Section titles
-            - Header levels (1-6)
-            - Brief content summary for each section
+            Look for patterns like:
+            - Work categories (CFC codes, trade sections)
+            - Material specifications (pipes, equipment, etc.)
+            - Labor categories
+            - Technical descriptions with quantities and units
             
-            Format as a structured list with indentation showing hierarchy.
+            Return a structured analysis with:
+            - Section titles and hierarchy levels
+            - Whether section contains items vs. sub-groups
+            - Estimated content type (materials, labor, specifications)
+            
+            Format as a structured list showing the offer hierarchy.
             """
         )
     
     def extract_structure_markdown(self, markdown_content: str) -> List[Dict[str, Any]]:
-        """Extract structure using markdown parsing"""
+        """Extract structure using markdown parsing for offer documents"""
         html = markdown.markdown(markdown_content)
         soup = BeautifulSoup(html, 'html.parser')
         
@@ -64,11 +69,16 @@ class StructureExtractor:
             # Get content until next header of same or higher level
             content = self._extract_section_content(header, level)
             
+            # Analyze content type for offer processing
+            content_type = self._analyze_content_type(title, content)
+            
             structure.append({
                 'title': title,
                 'level': level,
                 'content': content,
-                'start_position': str(header)
+                'content_type': content_type,
+                'start_position': str(header),
+                'estimated_items': self._estimate_item_count(content)
             })
         
         return structure
@@ -93,8 +103,48 @@ class StructureExtractor:
         
         return ' '.join(content_parts).strip()
     
-    def enhance_structure_with_llm(self, structure: List[Dict[str, Any]]) -> DocumentStructure:
-        """Use LLM to enhance structure understanding with context window management"""
+    def _analyze_content_type(self, title: str, content: str) -> str:
+        """Analyze what type of offer content this section contains"""
+        title_lower = title.lower()
+        content_lower = content.lower()
+        
+        # Check for different content types
+        if any(keyword in title_lower for keyword in ['cfc', 'lot', 'poste', 'chapitre']):
+            return 'work_category'
+        elif any(keyword in content_lower for keyword in ['dn ', 'mm', 'kg', 'm²', 'm³', 'pcs']):
+            return 'technical_items'
+        elif any(keyword in content_lower for keyword in ['tuyau', 'tube', 'pipe', 'equipment']):
+            return 'materials'
+        elif any(keyword in content_lower for keyword in ['installation', 'montage', 'pose']):
+            return 'labor'
+        elif any(keyword in content_lower for keyword in ['€', 'eur', 'prix', 'price']):
+            return 'pricing'
+        else:
+            return 'general'
+    
+    def _estimate_item_count(self, content: str) -> int:
+        """Estimate how many offer items this section might contain"""
+        # Look for patterns that suggest individual items
+        lines = content.split('\n')
+        item_indicators = 0
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+                
+            # Check for item-like patterns
+            if any(pattern in line.lower() for pattern in ['dn ', 'mm', '€', 'eur']):
+                item_indicators += 1
+            elif re.search(r'\d+\s*(m|kg|pcs|h)\b', line.lower()):
+                item_indicators += 1
+            elif line.startswith(('- ', '* ', '• ')):
+                item_indicators += 1
+        
+        return max(0, item_indicators)
+    
+    def enhance_structure_with_llm(self, structure: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Use LLM to enhance structure understanding for offer processing"""
         structure_text = self._format_structure_for_llm(structure)
         
         # Check if content fits in context window
@@ -109,21 +159,28 @@ class StructureExtractor:
                   f"Truncating content...")
             structure_text = self._truncate_for_context(structure_text)
         
-        enhanced_structure = self.llm.invoke(
-            self.structure_prompt.format(markdown_content=structure_text)
-        )
-        
-        # Convert to structured format
-        sections = []
-        for section_data in structure:
-            section = InvoiceSection(
-                title=section_data['title'],
-                level=section_data['level'],
-                content=section_data['content']
+        try:
+            enhanced_structure = self.llm.invoke(
+                self.structure_prompt.format(markdown_content=structure_text)
             )
-            sections.append(section)
-        
-        return DocumentStructure(sections=sections)
+            
+            # Return enhanced structure with original data
+            return {
+                'sections': structure,
+                'llm_analysis': enhanced_structure,
+                'total_sections': len(structure),
+                'estimated_total_items': sum(s.get('estimated_items', 0) for s in structure)
+            }
+            
+        except Exception as e:
+            print(f"Warning: LLM structure enhancement failed: {e}")
+            # Return basic structure without LLM enhancement
+            return {
+                'sections': structure,
+                'llm_analysis': None,
+                'total_sections': len(structure),
+                'estimated_total_items': sum(s.get('estimated_items', 0) for s in structure)
+            }
     
     def _truncate_for_context(self, text: str) -> str:
         """Truncate text to fit within context window"""
@@ -135,11 +192,18 @@ class StructureExtractor:
     def _format_structure_for_llm(self, structure: List[Dict[str, Any]]) -> str:
         """Format structure for LLM analysis"""
         formatted = []
+        formatted.append("OFFER DOCUMENT STRUCTURE ANALYSIS:")
+        formatted.append("=" * 50)
+        
         for section in structure:
             indent = "  " * (section['level'] - 1)
-            formatted.append(f"{indent}- {section['title']} (Level {section['level']})")
+            formatted.append(f"{indent}• {section['title']} (Level {section['level']})")
+            formatted.append(f"{indent}  Type: {section.get('content_type', 'unknown')}")
+            formatted.append(f"{indent}  Est. Items: {section.get('estimated_items', 0)}")
+            
             if section['content']:
-                content_preview = section['content'][:200] + "..." if len(section['content']) > 200 else section['content']
-                formatted.append(f"{indent}  Content: {content_preview}")
+                content_preview = section['content'][:150] + "..." if len(section['content']) > 150 else section['content']
+                formatted.append(f"{indent}  Preview: {content_preview}")
+            formatted.append("")
         
         return "\n".join(formatted)

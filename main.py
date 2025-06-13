@@ -47,12 +47,19 @@ def main():
         output_data = result["final_json"].model_dump()
         
         # Save to file
-        output_path = args.output or f"{Path(args.input_file).stem}_processed.json"
+        output_path = args.output or f"{Path(args.input_file).stem}_offer.json"
         with open(output_path, 'w', encoding='utf-8') as file:
             json.dump(output_data, file, indent=2, ensure_ascii=False, default=str)
         
-        print(f"Processing complete! Output saved to: {output_path}")
-        print(f"Extracted {len(output_data['items'])} items from {len(result['chunked_sections'])} sections")
+        print(f"Processing complete! Offer saved to: {output_path}")
+        
+        # Summary statistics
+        total_groups = len(output_data['offer_item_groups'])
+        total_items = sum(len(group['offer_items']) for group in output_data['offer_item_groups'])
+        total_amount = output_data.get('total_amount', 0)
+        
+        print(f"Extracted {total_items} items in {total_groups} groups")
+        print(f"Total offer amount: {total_amount:.2f} {output_data.get('currency', 'EUR')}")
     else:
         print("Processing failed - no output generated")
 
