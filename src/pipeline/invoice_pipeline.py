@@ -1,4 +1,5 @@
 # src/pipeline/invoice_pipeline.py
+import json
 from typing import Dict, Any
 from langgraph.graph import StateGraph, END
 from ..models.pipeline_state import PipelineState
@@ -6,14 +7,21 @@ from ..processors.structure_extractor import StructureExtractor
 from ..processors.content_chunker import ContentChunker
 from ..processors.section_analyzer import SectionAnalyzer
 from ..processors.json_merger import JsonMerger
+from pathlib import Path
+
 
 class InvoicePipeline:
     def __init__(self, config: Dict[str, Any]):
         self.config = config
+        self.results_dir = Path(config.get("results_dir", "results"))
+
         self.structure_extractor = StructureExtractor(config)
         self.content_chunker = ContentChunker(config)
         self.section_analyzer = SectionAnalyzer(config)
         self.json_merger = JsonMerger()
+
+        # Create results directory if it doesn't exist
+        self.results_dir.mkdir(parents=True, exist_ok=True)
         
         # Build the graph
         self.graph = self._build_graph()
@@ -37,15 +45,32 @@ class InvoicePipeline:
         
         return workflow.compile()
     
+    def _save_intermediate_result(self, filename: str, content: Any) -> None:
+        """Save intermediate results to a file"""
+        output_path = self.results_dir / filename
+        
+        if isinstance(content, (dict, list)):
+            with open(output_path, 'w', encoding='utf-8') as f:
+                json.dump(content, f, indent=2, ensure_ascii=False, default=str)
+        else:
+            with open(output_path, 'w', encoding='utf-8') as f:
+                f.write(str(content))
+   
     def _extract_structure_node(self, state: PipelineState) -> PipelineState:
         """Phase 1: Extract document structure"""
         try:
             markdown_structure = self.structure_extractor.extract_structure_markdown(
                 state["raw_markdown"]
             )
+            # Save initial markdown structure
+            self._save_intermediate_result('01_markdown_structure.md', markdown_structure)
+            
             document_structure = self.structure_extractor.enhance_structure_with_llm(
                 markdown_structure
             )
+            # Save enhanced structure
+            self._save_intermediate_result('02_enhanced_structure.json', document_structure)
+            
             state["document_structure"] = document_structure
         except Exception as e:
             state["processing_errors"].append(f"Structure extraction error: {str(e)}")
@@ -60,6 +85,9 @@ class InvoicePipeline:
                     state["document_structure"], 
                     state["raw_markdown"]
                 )
+                # Save chunked sections
+                self._save_intermediate_result('03_chunked_sections.json', chunked_sections)
+                
                 state["chunked_sections"] = chunked_sections
         except Exception as e:
             state["processing_errors"].append(f"Content chunking error: {str(e)}")
@@ -73,6 +101,9 @@ class InvoicePipeline:
                 analyzed_sections = self.section_analyzer.analyze_all_sections(
                     state["chunked_sections"]
                 )
+                # Save analyzed sections
+                self._save_intermediate_result('04_analyzed_sections.json', analyzed_sections)
+                
                 state["analyzed_sections"] = analyzed_sections
         except Exception as e:
             state["processing_errors"].append(f"Section analysis error: {str(e)}")

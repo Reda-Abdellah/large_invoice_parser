@@ -108,8 +108,9 @@ class StructureExtractor:
                     raise ValueError("Expected JSON array")
                 return structure
             except json.JSONDecodeError:
+                # print(response)
                 print("Warning: LLM response not valid JSON, falling back to basic structure")
-                return self._fallback_structure_extraction(content)
+                return self._fallback_structure_extraction(response)
                 
         except Exception as e:
             print(f"Structure extraction error: {e}")
@@ -128,29 +129,34 @@ class StructureExtractor:
         return self._merge_chunk_structures(structures)
 
     def _fallback_structure_extraction(self, content: str) -> List[Dict[str, Any]]:
-        """Basic structure extraction as fallback"""
-        lines = content.split('\n')
-        structure = []
-        current_section = None
-        
-        for line in lines:
-            if line.strip().startswith('#') or line.strip().isupper():
-                if current_section:
-                    structure.append(current_section)
-                current_section = {
-                    'title': line.strip('# '),
-                    'level': 1,
-                    'content': '',
-                    'content_type': 'general',
-                    'estimated_items': 0
-                }
-            elif current_section:
-                current_section['content'] += line + '\n'
-        
-        if current_section:
-            structure.append(current_section)
-        
-        return structure
+        """Basic structure extraction as fallback that preserves LLM response"""
+        try:
+            # Try to extract JSON array from LLM response by finding first [ and last ]
+            start_idx = content.find('[')
+            end_idx = content.rfind(']')
+            
+            if start_idx != -1 and end_idx != -1:
+                json_str = content[start_idx:end_idx + 1]
+                # Clean up common issues
+                json_str = re.sub(r'\d+\+', lambda m: str(int(m.group()[:-1]) + 5), json_str)  # Replace "10+" with "15"
+                json_str = re.sub(r'\s*\([^)]*\)', '', json_str)  # Remove parenthetical comments
+                
+                try:
+                    return json.loads(json_str)
+                except json.JSONDecodeError:
+                    pass
+
+        except Exception as e:
+            print(f"Failed to extract JSON from LLM response: {e}")
+
+        # If all else fails, return basic structure
+        return [{
+            'title': 'Document Root',
+            'level': 1,
+            'content': content[:200] + '...' if len(content) > 200 else content,
+            'content_type': 'general',
+            'estimated_items': 0
+        }]
 
     def _split_into_chunks(self, content: str) -> List[str]:
         """Split content into processable chunks"""

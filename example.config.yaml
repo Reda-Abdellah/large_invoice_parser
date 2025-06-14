@@ -8,6 +8,7 @@ analysis_model: "deepseek-r1:latest"
 # Processing configuration
 max_chunk_size: 8000  # Maximum characters per chunk
 overlap_size: 2000     # Overlap between chunks
+results_dir: "results"
 
 # Ollama configuration
 ollama_base_url: "http://localhost:11434"
