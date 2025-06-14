@@ -7,9 +7,9 @@ class JSONResponseCleaner:
     def __init__(self):
         self.json_patterns = [
             # Pattern 1: JSON wrapped in ```
-            r'```json\s*(\{.*?\})\s*```
+            r'```json\s*(\{.*?\})\s*```',
             # Pattern 2: JSON wrapped in ``` blocks
-            r'``````',
+            r'```\s*(\{.*?\})\s*```',
             # Pattern 3: JSON after <think> tags
             r'</think>\s*(\{.*?\})',
             # Pattern 4: Pure JSON (fallback)
@@ -47,7 +47,9 @@ class JSONResponseCleaner:
     def _extract_with_pattern(self, text: str, pattern: str) -> Optional[Dict[str, Any]]:
         """Extract JSON using a specific regex pattern"""
         try:
-            matches = re.findall(pattern, text, re.DOTALL | re.IGNORECASE)
+            # Compile pattern first to catch regex errors
+            compiled_pattern = re.compile(pattern, re.DOTALL | re.IGNORECASE)
+            matches = compiled_pattern.findall(text)
             
             for match in matches:
                 # Clean the match
@@ -67,6 +69,9 @@ class JSONResponseCleaner:
             
             return None
             
+        except re.error as e:
+            print(f"Invalid regex pattern: {e}")
+            return None
         except Exception as e:
             print(f"Pattern extraction error: {e}")
             return None
@@ -77,8 +82,8 @@ class JSONResponseCleaner:
             # Remove trailing commas
             json_str = re.sub(r',(\s*[}\]])', r'\1', json_str)
             
-            # Fix unescaped quotes in strings
-            json_str = re.sub(r'(?<!\\)"(?=.*")', '\\"', json_str)
+            # Fix unescaped quotes in strings - improved pattern
+            json_str = re.sub(r'(?<!")(?<!\\)"(?![:,}\]])', '\\"', json_str)
             
             # Fix single quotes to double quotes (but be careful with contractions)
             json_str = re.sub(r"'([^']*)':", r'"\1":', json_str)
