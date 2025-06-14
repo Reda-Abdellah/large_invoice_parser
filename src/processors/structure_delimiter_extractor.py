@@ -69,26 +69,28 @@ class StructureDelimiterExtractor:
             Sections from all chunks:
             {all_sections}
             
-            Return consolidated structure in JSON format:
+            IMPORTANT: Return ONLY valid JSON in this exact format:
             {{
                 "document_structure": {{
-                    "total_sections": number,
-                    "main_categories": ["list", "of", "main", "categories"],
+                    "total_sections": 5,
+                    "main_categories": ["work_category", "materials"],
                     "sections": [
                         {{
                             "section_id": "unique_id",
                             "title": "section title",
                             "level": 1,
-                            "section_type": "work_category|materials|labor|pricing|technical_specs",
+                            "section_type": "work_category",
                             "start_delimiter": "exact start text",
                             "end_delimiter": "exact end text",
                             "estimated_content": "description",
-                            "parent_section_id": "parent_id_if_applicable",
-                            "child_sections": ["list", "of", "child", "section", "ids"]
+                            "parent_section_id": null,
+                            "child_sections": []
                         }}
                     ]
                 }}
             }}
+            
+            Do not include any explanations or other text. Only return the JSON.
             """
         )
     
@@ -102,14 +104,14 @@ class StructureDelimiterExtractor:
             chunk_sections = self._analyze_chunk_structure(chunk)
             all_sections.extend(chunk_sections)
 
-        
+        print("Consolidating sections from all chunks...")
         # Consolidate sections from all chunks
-        consolidated_structure = self._consolidate_sections(all_sections)
+        consolidated_structure, sections_text = self._consolidate_sections(all_sections)
         
         print(f"  Found {len(all_sections)} sections across chunks")
         print(f"  Consolidated to {consolidated_structure.get('total_sections', 0)} unique sections")
         
-        return consolidated_structure
+        return consolidated_structure, sections_text
     
     def _analyze_chunk_structure(self, chunk: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Analyze structure in a single chunk"""
@@ -148,7 +150,7 @@ class StructureDelimiterExtractor:
             return []
     
     def _consolidate_sections(self, all_sections: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Consolidate sections from multiple chunks"""
+        """Consolidate sections from multiple chunks with robust JSON parsing"""
         try:
             if not all_sections:
                 return {
@@ -156,28 +158,27 @@ class StructureDelimiterExtractor:
                     'main_categories': [],
                     'sections': []
                 }
-            
             sections_text = json.dumps(all_sections, indent=2)
             
             response = self.llm.invoke(
                 self.consolidation_prompt.format(all_sections=sections_text)
             )
             
-            print("    Raw consolidation response:")
-            print(f"    {response[:200]}...")
+            # print("    Raw consolidation response:")
+            # print(f"    {response[:200]}...")
             
             # Use JSON cleaner to extract valid JSON
             consolidated = self.json_cleaner.extract_json(response)
             
             if not consolidated:
                 print("    Warning: Could not extract valid JSON from consolidation, using fallback")
-                return self._simple_consolidation(all_sections)
+                return self._simple_consolidation(all_sections), sections_text
             
             return consolidated.get('document_structure', {
                 'total_sections': 0,
                 'main_categories': [],
                 'sections': []
-            })
+            }), sections_text
             
         except Exception as e:
             print(f"    Error consolidating sections: {e}")
@@ -191,7 +192,7 @@ class StructureDelimiterExtractor:
         
         for section in all_sections:
             title_key = section.get('title', '').lower().strip()
-            if title_key not in seen_titles:
+            if title_key and title_key not in seen_titles:
                 seen_titles.add(title_key)
                 unique_sections.append(section)
         
