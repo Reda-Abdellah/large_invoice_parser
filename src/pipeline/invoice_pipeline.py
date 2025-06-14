@@ -117,15 +117,19 @@ class InvoicePipeline:
         """Phase 2: Extract structure with delimiters"""
         try:
             if state["overlapping_chunks"]:
-                structure_with_delimiters = self.structure_extractor.extract_structure_from_chunks(
+                structure_with_delimiters, structure_chunks = self.structure_extractor.extract_structure_from_chunks(
                     state["overlapping_chunks"]
                 )
                 state["structure_with_delimiters"] = structure_with_delimiters
                 
                 # Save structure result
                 self._save_intermediate_result(
-                    self._get_result_filename('2_structure'),
+                    self._get_result_filename('2_structure_consolidated'),
                     structure_with_delimiters
+                )
+                self._save_intermediate_result(
+                    self._get_result_filename('2_structure_chunks'),
+                    structure_chunks
                 )
         except Exception as e:
             state["processing_errors"].append(f"Structure extraction error: {str(e)}")

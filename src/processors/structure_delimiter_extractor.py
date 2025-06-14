@@ -2,6 +2,9 @@
 import json
 from typing import List, Dict, Any
 from langchain.prompts import PromptTemplate
+
+from ..prompts.structure_prompt import get_structure_prompt
+from ..prompts.consolidation_prompt import get_consolidation_prompt
 from ..utils.ollama_client import EnhancedOllamaClient
 import re
 import uuid
@@ -23,76 +26,9 @@ class StructureDelimiterExtractor:
             config.get('context_window_size', 8192)
         )
         
-        self.structure_prompt = PromptTemplate(
-            input_variables=["chunk_content", "chunk_info"],
-            template="""
-            Analyze this markdown chunk and identify structural sections for a construction/engineering offer.
-            
-            Chunk Info: {chunk_info}
-            
-            Content:
-            {chunk_content}
-            
-            For each section you identify, provide:
-            1. Section title/name
-            2. Section level (1=main, 2=sub, 3=detail)
-            3. START and END delimiters (exact text snippets that mark section boundaries)
-            4. Section type (work_category, materials, labor, pricing, technical_specs)
-            5. Estimated content (brief description)
-            
-            Return JSON format:
-            {{
-                "sections": [
-                    {{
-                        "section_id": "unique_id",
-                        "title": "section title",
-                        "level": 1,
-                        "section_type": "work_category|materials|labor|pricing|technical_specs",
-                        "start_delimiter": "exact text that starts this section",
-                        "end_delimiter": "exact text that ends this section",
-                        "estimated_content": "brief description of what this section contains",
-                        "chunk_id": "current_chunk_id"
-                    }}
-                ]
-            }}
-            
-            Be precise with delimiters - they should be exact text snippets that can be found in the markdown.
-            """
-        )
+        self.structure_prompt = get_structure_prompt()
         
-        self.consolidation_prompt = PromptTemplate(
-            input_variables=["all_sections"],
-            template="""
-            Consolidate these section analyses from multiple chunks into a coherent document structure.
-            Remove duplicates, merge overlapping sections, and create a hierarchical structure.
-            
-            Sections from all chunks:
-            {all_sections}
-            
-            IMPORTANT: Return ONLY valid JSON in this exact format:
-            {{
-                "document_structure": {{
-                    "total_sections": 5,
-                    "main_categories": ["work_category", "materials"],
-                    "sections": [
-                        {{
-                            "section_id": "unique_id",
-                            "title": "section title",
-                            "level": 1,
-                            "section_type": "work_category",
-                            "start_delimiter": "exact start text",
-                            "end_delimiter": "exact end text",
-                            "estimated_content": "description",
-                            "parent_section_id": null,
-                            "child_sections": []
-                        }}
-                    ]
-                }}
-            }}
-            
-            Do not include any explanations or other text. Only return the JSON.
-            """
-        )
+        self.consolidation_prompt = get_consolidation_prompt()
     
     def extract_structure_from_chunks(self, chunks: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Extract structure with delimiters from all chunks"""
@@ -164,8 +100,9 @@ class StructureDelimiterExtractor:
                 self.consolidation_prompt.format(all_sections=sections_text)
             )
             
-            # print("    Raw consolidation response:")
-            # print(f"    {response[:200]}...")
+            print("    Raw consolidation response:")
+            print(f"    {response[:200]}...")
+            
             
             # Use JSON cleaner to extract valid JSON
             consolidated = self.json_cleaner.extract_json(response)

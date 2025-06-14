@@ -17,7 +17,7 @@ results_dir: "results"
 # Ollama configuration
 ollama_base_url: "http://localhost:11434"
 timeout: 300
-context_window_size: 8192  # Context window size in tokens (default: 2048)
+context_window_size: 30000  # Context window size in tokens (default: 2048)
 max_context_window: 32768  # Maximum context window for large documents
 
 # Output configuration
