@@ -5,6 +5,10 @@
 structure_model: "deepseek-r1:latest"  
 analysis_model: "deepseek-r1:latest"
 
+# New chunking configuration
+chunk_size: 4000          # Characters per chunk
+overlap_size: 1000         # Overlap between chunks
+
 # Processing configuration
 max_chunk_size: 8000  # Maximum characters per chunk
 overlap_size: 2000     # Overlap between chunks
