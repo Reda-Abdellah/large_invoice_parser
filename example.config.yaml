@@ -24,3 +24,6 @@ max_context_window: 32768  # Maximum context window for large documents
 output_format: "json"
 include_raw_content: false
 include_processing_metadata: true
+
+# Add this to your config.yaml for debugging
+debug_json_responses: true  # Set to false in production

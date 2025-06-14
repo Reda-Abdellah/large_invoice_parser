@@ -1,4 +1,5 @@
 data/
+results/
 outputs/
 recursive_analyse/
 __pycache__/

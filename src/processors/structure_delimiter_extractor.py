@@ -1,9 +1,11 @@
 # src/processors/structure_delimiter_extractor.py
+import json
 from typing import List, Dict, Any
 from langchain.prompts import PromptTemplate
 from ..utils.ollama_client import EnhancedOllamaClient
 import re
 import uuid
+from ..utils.json_cleaner import JSONResponseCleaner
 
 class StructureDelimiterExtractor:
     def __init__(self, config: Dict[str, Any]):
@@ -13,6 +15,8 @@ class StructureDelimiterExtractor:
             context_window_size=config.get('context_window_size', 8192),
             timeout=config.get('timeout', 300)
         )
+
+        self.json_cleaner = JSONResponseCleaner()
         
         self.llm = self.ollama_client.create_llm_with_context(
             config.get('structure_model', 'llama3.2:3b'),
@@ -97,6 +101,7 @@ class StructureDelimiterExtractor:
         for chunk in chunks:
             chunk_sections = self._analyze_chunk_structure(chunk)
             all_sections.extend(chunk_sections)
+
         
         # Consolidate sections from all chunks
         consolidated_structure = self._consolidate_sections(all_sections)
@@ -117,9 +122,16 @@ class StructureDelimiterExtractor:
                     chunk_info=chunk_info
                 )
             )
-            
-            import json
-            result = json.loads(response)
+
+            # Use JSON cleaner to extract valid JSON
+            result = self.json_cleaner.extract_json(response)
+            if self.config.get('debug_json_responses', False):
+                print(f"Raw LLM response: {response}")
+                print(f"Cleaned JSON: {result}")
+
+            if not result:
+                print(f"    Warning: Could not extract valid JSON from chunk {chunk['chunk_index']}")
+                return []
             
             # Add chunk information to each section
             sections = result.get('sections', [])
@@ -138,14 +150,28 @@ class StructureDelimiterExtractor:
     def _consolidate_sections(self, all_sections: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Consolidate sections from multiple chunks"""
         try:
+            if not all_sections:
+                return {
+                    'total_sections': 0,
+                    'main_categories': [],
+                    'sections': []
+                }
+            
             sections_text = json.dumps(all_sections, indent=2)
             
             response = self.llm.invoke(
                 self.consolidation_prompt.format(all_sections=sections_text)
             )
             
-            import json
-            consolidated = json.loads(response)
+            print("    Raw consolidation response:")
+            print(f"    {response[:200]}...")
+            
+            # Use JSON cleaner to extract valid JSON
+            consolidated = self.json_cleaner.extract_json(response)
+            
+            if not consolidated:
+                print("    Warning: Could not extract valid JSON from consolidation, using fallback")
+                return self._simple_consolidation(all_sections)
             
             return consolidated.get('document_structure', {
                 'total_sections': 0,
@@ -154,8 +180,7 @@ class StructureDelimiterExtractor:
             })
             
         except Exception as e:
-            print(f"Error consolidating sections: {e}")
-            # Fallback: simple deduplication
+            print(f"    Error consolidating sections: {e}")
             return self._simple_consolidation(all_sections)
     
     def _simple_consolidation(self, all_sections: List[Dict[str, Any]]) -> Dict[str, Any]:

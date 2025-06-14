@@ -46,7 +46,7 @@ class MarkdownChunker:
                 end = self._find_natural_break(markdown_content, start, end)
             
             chunk_content = markdown_content[start:end]
-            
+            print(f'chunk delimeter start: {start}, end: {end}.')  # Debug output
             chunks.append({
                 'chunk_id': self._generate_chunk_id(chunk_content, chunk_index),
                 'chunk_index': chunk_index,
@@ -81,17 +81,17 @@ class MarkdownChunker:
         search_end = min(len(content), preferred_end + 100)
         
         # Look for double newlines (paragraph breaks)
-        for i in range(preferred_end, search_start, -1):
+        for i in range(search_end, search_start, -1):
             if i < len(content) - 1 and content[i:i+2] == '\n\n':
                 return i + 2
         
         # Look for single newlines
-        for i in range(preferred_end, search_start, -1):
+        for i in range(search_end, search_start, -1):
             if content[i] == '\n':
                 return i + 1
         
         # Look for sentence endings
-        for i in range(preferred_end, search_start, -1):
+        for i in range(search_end, search_start, -1):
             if content[i] in '.!?':
                 return i + 1
         

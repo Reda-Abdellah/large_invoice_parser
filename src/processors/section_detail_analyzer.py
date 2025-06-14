@@ -1,6 +1,7 @@
 # src/processors/section_detail_analyzer.py
 from typing import List, Dict, Any
 from langchain.prompts import PromptTemplate
+from ..utils.json_cleaner import JSONResponseCleaner
 from ..utils.ollama_client import EnhancedOllamaClient
 import re
 
@@ -12,6 +13,7 @@ class SectionDetailAnalyzer:
             context_window_size=config.get('context_window_size', 8192),
             timeout=config.get('timeout', 300)
         )
+        self.json_cleaner = JSONResponseCleaner()
         
         self.llm = self.ollama_client.create_llm_with_context(
             config.get('analysis_model', 'llama3.2:7b'),
@@ -28,53 +30,46 @@ class SectionDetailAnalyzer:
             Section Content:
             {section_content}
             
-            Extract detailed offer items in JSON format:
+            IMPORTANT: Return ONLY valid JSON in this exact format:
             {{
                 "section_analysis": {{
                     "section_id": "section_id",
                     "section_title": "title",
-                    "section_type": "work_category|materials|labor|pricing|technical_specs",
-                    "group_type": "BASE|SUB",
+                    "section_type": "work_category",
+                    "group_type": "BASE",
                     "default_margin": 25
                 }},
                 "offer_items": [
                     {{
                         "name": "detailed item description",
-                        "offer_item_type": "NORMAL|OPTIONAL|VARIANT",
-                        "unit_quantity": number,
-                        "unit_type": "MATERIAL|LABOR|SERVICE",
-                        "unit": "m|m²|m³|kg|h|pcs|etc",
-                        "unit_price": number,
-                        "margin": number,
-                        "article_number": "reference if available",
-                        "desc_html": "HTML formatted description",
-                        "is_optional": boolean,
+                        "offer_item_type": "NORMAL",
+                        "unit_quantity": 10,
+                        "unit_type": "MATERIAL",
+                        "unit": "m",
+                        "unit_price": 15.50,
+                        "margin": 25,
+                        "article_number": "ref123",
+                        "desc_html": "<p>HTML description</p>",
+                        "is_optional": false,
                         "category": "item category"
                     }}
                 ],
                 "section_metadata": {{
-                    "total_items": number,
-                    "has_pricing": boolean,
-                    "has_quantities": boolean,
-                    "technical_specs": ["list", "of", "specs"],
-                    "key_materials": ["list", "of", "materials"]
+                    "total_items": 1,
+                    "has_pricing": true,
+                    "has_quantities": true,
+                    "technical_specs": ["spec1", "spec2"],
+                    "key_materials": ["material1", "material2"]
                 }}
             }}
             
-            Focus on extracting:
-            - Individual items with quantities and units
-            - Technical specifications (DN, dimensions, materials)
-            - Pricing information where available
-            - Article/reference numbers
-            - Detailed descriptions
-            
-            Return valid JSON only.
+            Do not include any explanations, thinking, or other text. Only return the JSON.
             """
         )
     
     def analyze_sections_detailed(self, structure_with_delimiters: Dict[str, Any], 
                                  raw_markdown: str) -> List[Dict[str, Any]]:
-        """Analyze each section in detail using delimiters"""
+        """Analyze each section in detail using delimiters with robust JSON parsing"""
         sections = structure_with_delimiters.get('sections', [])
         detailed_analyses = []
         
@@ -92,10 +87,67 @@ class SectionDetailAnalyzer:
             
             # Analyze the section content
             analysis = self._analyze_section_detail(section, section_content)
-            detailed_analyses.append(analysis)
+            if analysis:  # Only add if analysis was successful
+                detailed_analyses.append(analysis)
         
         print(f"  Completed detailed analysis of {len(detailed_analyses)} sections")
         return detailed_analyses
+    
+    def _analyze_section_detail(self, section: Dict[str, Any], content: str) -> Dict[str, Any]:
+        """Analyze section content in detail with robust JSON parsing"""
+        try:
+            section_info = f"Section: {section.get('title')} | Type: {section.get('section_type')} | Level: {section.get('level')}"
+            
+            response = self.llm.invoke(
+                self.detail_prompt.format(
+                    section_content=content,
+                    section_info=section_info
+                )
+            )
+            
+            print(f"    Raw analysis response:")
+            print(f"    {response[:150]}...")
+            
+            # Use JSON cleaner to extract valid JSON
+            analysis = self.json_cleaner.extract_json(response)
+            
+            if not analysis:
+                print(f"    Warning: Could not extract valid JSON for section '{section.get('title')}'")
+                return self._create_fallback_analysis(section, content)
+            
+            # Add original section info
+            analysis['original_section'] = section
+            analysis['content_length'] = len(content)
+            
+            print(f"    Successfully analyzed section with {len(analysis.get('offer_items', []))} items")
+            return analysis
+            
+        except Exception as e:
+            print(f"    Error analyzing section '{section.get('title')}': {e}")
+            return self._create_fallback_analysis(section, content, str(e))
+    
+    def _create_fallback_analysis(self, section: Dict[str, Any], content: str, error: str = None) -> Dict[str, Any]:
+        """Create fallback analysis when JSON parsing fails"""
+        return {
+            'original_section': section,
+            'section_analysis': {
+                'section_id': section.get('section_id'),
+                'section_title': section.get('title'),
+                'section_type': section.get('section_type', 'general'),
+                'group_type': 'BASE' if section.get('level', 1) <= 2 else 'SUB',
+                'default_margin': 25
+            },
+            'offer_items': [],
+            'section_metadata': {
+                'total_items': 0,
+                'has_pricing': False,
+                'has_quantities': False,
+                'technical_specs': [],
+                'key_materials': []
+            },
+            'content_length': len(content),
+            'error': error or 'JSON parsing failed'
+        }
     
     def _extract_section_content(self, section: Dict[str, Any], raw_markdown: str) -> str:
         """Extract section content using start and end delimiters"""
