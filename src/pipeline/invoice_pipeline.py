@@ -1,5 +1,8 @@
 # src/pipeline/invoice_pipeline.py
 from typing import Dict, Any
+import json
+from pathlib import Path
+from datetime import datetime
 from langgraph.graph import StateGraph, END
 from ..models.pipeline_state import PipelineState
 from ..processors.markdown_chunker import MarkdownChunker
@@ -10,6 +13,13 @@ from ..processors.offer_aggregator import OfferAggregator
 class InvoicePipeline:
     def __init__(self, config: Dict[str, Any]):
         self.config = config
+        
+        # Initialize results directory
+        self.results_dir = Path(config.get('results_dir', 'pipeline_results'))
+        self.results_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Add timestamp to results
+        self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         
         # Initialize processors
         self.markdown_chunker = MarkdownChunker(config)
@@ -58,7 +68,12 @@ class InvoicePipeline:
                 state["raw_markdown"]
             )
             state["overlapping_chunks"] = overlapping_chunks
-            # Save enhanced structure
+            
+            # Save chunks result
+            self._save_intermediate_result(
+                self._get_result_filename('1_chunks'), 
+                overlapping_chunks
+            )
         except Exception as e:
             state["processing_errors"].append(f"Markdown chunking error: {str(e)}")
         
@@ -72,6 +87,12 @@ class InvoicePipeline:
                     state["overlapping_chunks"]
                 )
                 state["structure_with_delimiters"] = structure_with_delimiters
+                
+                # Save structure result
+                self._save_intermediate_result(
+                    self._get_result_filename('2_structure'),
+                    structure_with_delimiters
+                )
         except Exception as e:
             state["processing_errors"].append(f"Structure extraction error: {str(e)}")
         
@@ -86,6 +107,12 @@ class InvoicePipeline:
                     state["raw_markdown"]
                 )
                 state["section_analyses"] = section_analyses
+                
+                # Save analysis result
+                self._save_intermediate_result(
+                    self._get_result_filename('3_analysis'),
+                    section_analyses
+                )
         except Exception as e:
             state["processing_errors"].append(f"Section analysis error: {str(e)}")
         
@@ -99,10 +126,40 @@ class InvoicePipeline:
                     state["section_analyses"]
                 )
                 state["final_json"] = final_json
+                
+                # Save final result
+                self._save_intermediate_result(
+                    self._get_result_filename('4_final'),
+                    final_json
+                )
         except Exception as e:
             state["processing_errors"].append(f"Aggregation error: {str(e)}")
         
         return state
+    
+    def _save_intermediate_result(self, filename: str, content: Any) -> None:
+        """Save intermediate results to a file"""
+        # Add timestamp to filename
+        timestamped_filename = f"{self.timestamp}_{filename}"
+        output_path = self.results_dir / timestamped_filename
+        
+        try:
+            if isinstance(content, (dict, list)):
+                with open(output_path, 'w', encoding='utf-8') as f:
+                    json.dump(content, f, indent=2, ensure_ascii=False, default=str)
+            elif isinstance(content, bytes):
+                with open(output_path, 'wb') as f:
+                    f.write(content)
+            else:
+                with open(output_path, 'w', encoding='utf-8') as f:
+                    f.write(str(content))
+            print(f"Saved intermediate result to: {output_path}")
+        except Exception as e:
+            print(f"Error saving intermediate result: {str(e)}")
+
+    def _get_result_filename(self, phase: str, extension: str = 'json') -> str:
+        """Generate standardized filename for results"""
+        return f"phase_{phase}.{extension}"
     
     def process_invoice(self, markdown_content: str) -> PipelineState:
         """Process markdown through the new 4-phase pipeline"""
