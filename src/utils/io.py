@@ -3,7 +3,7 @@
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from utils.pdf_converter import PDFToMarkdownConverter
+from ..utils.pdf_converter import PDFToMarkdownConverter
 
 
 def is_pdf_file(file_path: str) -> bool:

@@ -9,7 +9,7 @@ from typing import Dict, Any, Optional
 from dataclasses import dataclass
 import os
 
-from utils.io import read_input_file
+from src.utils.io import read_input_file
 os.environ['NO_PROXY'] = "http://127.0.0.1,localhost,http://10.8.13.21"
 
 
