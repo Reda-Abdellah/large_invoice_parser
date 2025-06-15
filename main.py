@@ -56,8 +56,8 @@ def main():
         final_output = result["final_json_translated"]
         output_suffix = "_processed_fr"
         print("Using French translated output")
-    elif result["final_json"]:
-        final_output = result["final_json"]
+    elif result["structure_with_delimiters"]:
+        final_output = result["structure_with_delimiters"]
         output_suffix = "_processed_en" if config.get('enable_translation') else "_processed"
         print("Using English output")
     

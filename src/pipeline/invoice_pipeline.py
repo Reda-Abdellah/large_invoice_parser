@@ -15,13 +15,6 @@ class InvoicePipeline:
     def __init__(self, config: Dict[str, Any]):
         self.config = config
         
-        # Initialize processors
-        self.markdown_chunker = MarkdownChunker(config)
-        self.structure_extractor = StructureDelimiterExtractor(config)
-        self.section_analyzer = SectionDetailAnalyzer(config)
-        self.offer_aggregator = OfferAggregator(config)
-        self.translator = DocumentTranslator(config)
-
         # Initialize results directory
         self.results_dir = Path(config.get('results_dir', 'pipeline_results'))
         self.results_dir.mkdir(parents=True, exist_ok=True)
@@ -29,41 +22,42 @@ class InvoicePipeline:
         # Add timestamp to results
         self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         
+        # Initialize processors
+        self.markdown_chunker = MarkdownChunker(config)
+        self.offer_item_extractor = StructureDelimiterExtractor(config)
+        self.section_analyzer = SectionDetailAnalyzer(config)  # Keep for item detail analysis
+        self.translator = DocumentTranslator(config)
+        
         # Build the graph
         self.graph = self._build_graph()
         self._print_config_info()
-    
+
     def _print_config_info(self):
         """Print configuration information"""
         print(f"Pipeline Configuration:")
-        print(f"  Translation Enabled: {self.config.get('enable_translation', False)}")
-        print(f"  Translation Model: {self.config.get('translation_model', 'same as analysis')}")
-        print(f"  Chunk Size: {self.config.get('chunk_size', 4000)} characters")
-        print(f"  Overlap Size: {self.config.get('overlap_size', 400)} characters")
-        print(f"  Context Window: {self.config.get('context_window_size', 8192)} tokens")
+        print(f"  Context Window Size: {self.config.get('context_window_size', 8192)} tokens")
+        print(f"  Max Context Window: {self.config.get('max_context_window', 32768)} tokens")
         print(f"  Structure Model: {self.config.get('structure_model', 'llama3.2:3b')}")
         print(f"  Analysis Model: {self.config.get('analysis_model', 'llama3.2:7b')}")
+        print(f"  Max Chunk Size: {self.config.get('max_chunk_size', 2000)} characters")
         print()
-    
+
     def _build_graph(self) -> StateGraph:
-        """Build the enhanced pipeline with translation"""
+        """Build pipeline with item detail analysis"""
         workflow = StateGraph(PipelineState)
         
-        # Add nodes
         workflow.add_node("translate_to_english", self._translate_to_english_node)
         workflow.add_node("chunk_markdown", self._chunk_markdown_node)
-        workflow.add_node("extract_structure_delimiters", self._extract_structure_delimiters_node)
-        workflow.add_node("analyze_sections_detailed", self._analyze_sections_detailed_node)
-        workflow.add_node("aggregate_format", self._aggregate_format_node)
+        workflow.add_node("extract_offer_items", self._extract_structure_delimiters_node)
+        workflow.add_node("analyze_item_details", self._analyze_sections_detailed_node)  # Item detail analysis
         workflow.add_node("translate_to_french", self._translate_to_french_node)
         
         # Add edges
         workflow.set_entry_point("translate_to_english")
         workflow.add_edge("translate_to_english", "chunk_markdown")
-        workflow.add_edge("chunk_markdown", "extract_structure_delimiters")
-        workflow.add_edge("extract_structure_delimiters", "analyze_sections_detailed")
-        workflow.add_edge("analyze_sections_detailed", "aggregate_format")
-        workflow.add_edge("aggregate_format", "translate_to_french")
+        workflow.add_edge("chunk_markdown", "extract_offer_items")
+        workflow.add_edge("extract_offer_items", "analyze_item_details")
+        workflow.add_edge("analyze_item_details", "translate_to_french")
         workflow.add_edge("translate_to_french", END)
         
         return workflow.compile()
@@ -117,7 +111,7 @@ class InvoicePipeline:
         """Phase 2: Extract structure with delimiters"""
         try:
             if state["overlapping_chunks"]:
-                structure_with_delimiters, structure_chunks = self.structure_extractor.extract_structure_from_chunks(
+                structure_with_delimiters, structure_chunks = self.offer_item_extractor.extract_structure_from_chunks(
                     state["overlapping_chunks"]
                 )
                 state["structure_with_delimiters"] = structure_with_delimiters
@@ -137,35 +131,39 @@ class InvoicePipeline:
         return state
     
     def _analyze_sections_detailed_node(self, state: PipelineState) -> PipelineState:
-        """Phase 3: Detailed section-by-section analysis of level 3 items"""
+        """Phase 3: Detailed analysis of individual offer items"""
         try:
             if state["structure_with_delimiters"] and state["overlapping_chunks"]:
-                # Use translated content if available for analysis
-                content_for_analysis = state["translated_markdown"] or state["raw_markdown"]
+                print("Phase 3: Analyzing individual offer items in detail...")
                 
-                section_analyses = self.section_analyzer.analyze_sections_detailed(
+                detailed_structure = self.section_analyzer.analyze_offer_items_detailed(
                     state["structure_with_delimiters"],
-                    content_for_analysis,
-                    state["overlapping_chunks"]  # Pass chunks for content extraction
+                    state["overlapping_chunks"]
                 )
-                state["section_analyses"] = section_analyses
+                
+                # Update the structure with detailed analysis
+                state["structure_with_delimiters"] = detailed_structure
+
+                # Save structure result
+                self._save_intermediate_result(
+                    self._get_result_filename('3_detailed_structure'),
+                    detailed_structure
+                )
                 
             else:
                 print("Warning: Missing structure or chunks for detailed analysis")
-                state["section_analyses"] = []
                 
         except Exception as e:
-            state["processing_errors"].append(f"Section analysis error: {str(e)}")
-            state["section_analyses"] = []
+            state["processing_errors"].append(f"Item detail analysis error: {str(e)}")
         
         return state
     
     def _aggregate_format_node(self, state: PipelineState) -> PipelineState:
         """Phase 4: Aggregate and format final offer"""
         try:
-            if state["section_analyses"]:
+            if state["structure_with_delimiters"]:
                 final_json = self.offer_aggregator.aggregate_and_format(
-                    state["section_analyses"]
+                    state["structure_with_delimiters"]
                 )
                 state["final_json"] = final_json
                 

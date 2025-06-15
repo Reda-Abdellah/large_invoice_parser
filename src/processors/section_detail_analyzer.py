@@ -1,5 +1,5 @@
 # src/processors/section_detail_analyzer.py
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from langchain.prompts import PromptTemplate
 
 from ..prompts.section_details_prompt import get_section_detail_prompt
@@ -73,220 +73,230 @@ class SectionDetailAnalyzer:
         print(f"  Completed detailed analysis of {len(detailed_analyses)} sections")
         return detailed_analyses
     
-    def _extract_level3_sections(self, hierarchical_sections: List[Dict[str, Any]], 
-                                flat_sections: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Extract all level 3 sections from hierarchical structure"""
-        level3_sections = []
+    
+    
+
+    def analyze_offer_items_detailed(self, offer_structure: Dict[str, Any], 
+                                   overlapping_chunks: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Analyze each offer item in detail using chunk content and delimiters"""
         
-        def extract_recursive(sections):
-            for section in sections:
-                if section.get('level') == 3:
-                    level3_sections.append(section)
+        # Create chunk lookup
+        chunk_lookup = {chunk['chunk_id']: chunk for chunk in overlapping_chunks}
+        
+        # Process all offer items
+        processed_structure = self._deep_copy_structure(offer_structure)
+        total_items_processed = 0
+        
+        print("Phase 3: Detailed analysis of individual offer items...")
+        
+        for main_group in processed_structure.get('offer_item_groups', []):
+            for sub_group in main_group.get('offer_groups', []):
+                items = sub_group.get('offer_items', [])
+                print(f"  Processing {len(items)} items in sub-group: {sub_group.get('name', 'Unnamed')}")
                 
-                # Recurse into child sections
-                child_sections = section.get('child_sections', [])
-                if child_sections:
-                    extract_recursive(child_sections)
+                for item in items:
+                    item_details = self._analyze_single_item(item, main_group, sub_group, chunk_lookup)
+                    if item_details:
+                        item['details'] = item_details
+                        total_items_processed += 1
+                    else:
+                        item['details'] = self._create_empty_details()
         
-        extract_recursive(hierarchical_sections)
+        print(f"  Completed detailed analysis of {total_items_processed} items")
         
-        # Also check flat sections as backup
-        for section in flat_sections:
-            if section.get('level') == 3:
-                # Check if not already in list
-                if not any(s['section_id'] == section['section_id'] for s in level3_sections):
-                    level3_sections.append(section)
-        
-        return level3_sections
+        return processed_structure
     
-    def _get_section_chunk_content(self, section: Dict[str, Any], 
-                                  chunk_lookup: Dict[str, Dict[str, Any]]) -> str:
-        """Get the chunk content where this section was found"""
-        chunk_id = section.get('chunk_id')
-        
-        if not chunk_id or chunk_id not in chunk_lookup:
-            print(f"    Warning: Chunk ID '{chunk_id}' not found for section '{section.get('title')}'")
-            return ""
-        
-        chunk = chunk_lookup[chunk_id]
-        return chunk.get('content', '')
+    def _analyze_single_item(self, item: Dict[str, Any], 
+                           main_group: Dict[str, Any], 
+                           sub_group: Dict[str, Any],
+                           chunk_lookup: Dict[str, Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """Analyze a single offer item in detail"""
+        try:
+            # Get chunk content
+            chunk_id = item.get('chunk_id')
+            if not chunk_id or chunk_id not in chunk_lookup:
+                print(f"    Warning: Chunk {chunk_id} not found for item: {item.get('name', 'Unnamed')}")
+                return None
+            
+            chunk = chunk_lookup[chunk_id]
+            
+            # # Extract item content using delimiters
+            # item_content = self._extract_item_content(item, chunk['content'])
+            item_content = chunk['content']
+            
+            if not item_content.strip():
+                print(f"    Warning: No content extracted for item: {item.get('name', 'Unnamed')}")
+                return None
+            
+            # Build context information
+            context_info = self._build_item_context(item, main_group, sub_group)
+            
+            # Build item info
+            item_info = (f"Name: {item.get('name')} | "
+                        f"Chunk: {chunk_id}")
+            if 'start_delimiter' in item:
+                item_info += f" | Start Delimiter: {item.get('start_delimiter', 'None')}"
+            if 'end_delimiter' in item:
+                item_info += f" | End Delimiter: {item.get('end_delimiter', 'None')}"
+            
+            # Analyze with LLM
+            response = self.llm.invoke(
+                self.item_detail_prompt.format(
+                    item_content=item_content,
+                    item_info=item_info,
+                    context_info=context_info
+                )
+            )
+            
+            # Parse response
+            analysis = self.json_cleaner.extract_json(response)
+            
+            if not analysis:
+                print(f"    Warning: Could not extract JSON for item: {item.get('name', 'Unnamed')}")
+                return None
+            
+            print(f"    ✓ Analyzed item: {item.get('name', 'Unnamed')[:50]}...")
+            return analysis
+            
+        except Exception as e:
+            print(f"    Error analyzing item {item.get('name', 'Unnamed')}: {e}")
+            return None
     
-    def _extract_section_content_from_chunk(self, section: Dict[str, Any], 
-                                           chunk_content: str,
-                                           full_markdown: str) -> str:
-        """Extract section content using delimiters, preferring chunk content"""
-        start_delimiter = section.get('start_delimiter', '')
-        end_delimiter = section.get('end_delimiter', '')
+    def _extract_item_content(self, item: Dict[str, Any], chunk_content: str) -> str:
+        """Extract specific item content using delimiters"""
+        start_delimiter = item.get('start_delimiter', '')
+        end_delimiter = item.get('end_delimiter', '')
         
         if not start_delimiter:
-            print(f"    Warning: No start delimiter for section '{section.get('title')}'")
+            # If no delimiter, try to find content around item name
+            item_name = item.get('name', '')
+            if item_name:
+                return self._extract_content_around_name(item_name, chunk_content)
             return ""
         
-        # First try to extract from the specific chunk
-        section_content = self._extract_with_delimiters(chunk_content, start_delimiter, end_delimiter)
-        
-        # If not found in chunk, try the full markdown (fallback)
-        if not section_content.strip():
-            print(f"    Delimiter not found in chunk, trying full markdown...")
-            section_content = self._extract_with_delimiters(full_markdown, start_delimiter, end_delimiter)
-        
-        return section_content
-    
-    def _extract_with_delimiters(self, content: str, start_delimiter: str, end_delimiter: str) -> str:
-        """Extract content between delimiters"""
-        # Find start position
-        start_pos = content.find(start_delimiter)
+        # Extract using delimiters
+        start_pos = chunk_content.find(start_delimiter)
         if start_pos == -1:
             # Try fuzzy matching
-            start_pos = self._fuzzy_find_delimiter(content, start_delimiter)
+            start_pos = self._fuzzy_find_delimiter(chunk_content, start_delimiter)
             if start_pos == -1:
                 return ""
         
         # Find end position
         if end_delimiter:
-            end_pos = content.find(end_delimiter, start_pos + len(start_delimiter))
+            end_pos = chunk_content.find(end_delimiter, start_pos + len(start_delimiter))
             if end_pos == -1:
-                end_pos = self._fuzzy_find_delimiter(content, end_delimiter, start_pos + len(start_delimiter))
-                if end_pos == -1:
-                    # Use reasonable end position
-                    end_pos = min(start_pos + 2000, len(content))
+                end_pos = min(start_pos + 1000, len(chunk_content))  # Reasonable limit
         else:
-            # No end delimiter, use reasonable heuristics
-            end_pos = min(start_pos + 1500, len(content))
+            end_pos = min(start_pos + 800, len(chunk_content))
         
         # Extract content
-        extracted = content[start_pos:end_pos].strip()
+        content = chunk_content[start_pos:end_pos]
         
-        # Remove the start delimiter from content
-        if extracted.startswith(start_delimiter):
-            extracted = extracted[len(start_delimiter):].strip()
+        # Include some context before and after
+        context_before = chunk_content[max(0, start_pos - 200):start_pos]
+        context_after = chunk_content[end_pos:min(len(chunk_content), end_pos + 200)]
         
-        return extracted
+        full_content = f"{context_before}\n--- ITEM CONTENT ---\n{content}\n--- END ITEM ---\n{context_after}"
+        
+        return full_content
     
-    def _fuzzy_find_delimiter(self, text: str, delimiter: str, start_pos: int = 0) -> int:
-        """Find delimiter with fuzzy matching"""
-        # Try exact match first
-        pos = text.find(delimiter, start_pos)
-        if pos != -1:
-            return pos
+    def _extract_content_around_name(self, item_name: str, chunk_content: str) -> str:
+        """Extract content around item name when no delimiters available"""
+        # Find item name in content
+        name_pos = chunk_content.find(item_name)
+        if name_pos == -1:
+            # Try partial matching
+            name_words = item_name.split()[:3]  # First 3 words
+            for word in name_words:
+                name_pos = chunk_content.find(word)
+                if name_pos != -1:
+                    break
         
+        if name_pos == -1:
+            return chunk_content[:1000]  # Return first part of chunk
+        
+        # Extract context around the name
+        start_pos = max(0, name_pos - 300)
+        end_pos = min(len(chunk_content), name_pos + 700)
+        
+        return chunk_content[start_pos:end_pos]
+    
+    def _fuzzy_find_delimiter(self, content: str, delimiter: str) -> int:
+        """Find delimiter with fuzzy matching"""
         # Try with normalized whitespace
         normalized_delimiter = ' '.join(delimiter.split())
-        lines = text[start_pos:].split('\n')
+        lines = content.split('\n')
         
         for i, line in enumerate(lines):
             normalized_line = ' '.join(line.split())
             if normalized_delimiter in normalized_line:
-                # Calculate position in original text
-                return start_pos + sum(len(lines[j]) + 1 for j in range(i))
-        
-        # Try partial matching (first few words)
-        delimiter_words = delimiter.split()[:3]
-        if delimiter_words:
-            partial_delimiter = ' '.join(delimiter_words)
-            pos = text.find(partial_delimiter, start_pos)
-            if pos != -1:
-                return pos
+                return sum(len(lines[j]) + 1 for j in range(i))
         
         return -1
     
-    def _analyze_section_detail(self, section: Dict[str, Any], content: str, 
-                               flat_sections: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Analyze level 3 section content in detail"""
-        try:
-            # Build parent context
-            parent_context = self._build_parent_context(section, flat_sections)
-            
-            section_info = (f"Section ID: {section.get('section_id')} | "
-                          f"Title: {section.get('title')} | "
-                          f"Type: {section.get('section_type')} | "
-                          f"Level: {section.get('level')}")
-            
-            response = self.llm.invoke(
-                self.detail_prompt.format(
-                    section_content=content,
-                    section_info=section_info,
-                    parent_context=parent_context
-                )
-            )
-            
-            print(f"    Raw analysis response (first 150 chars):")
-            print(f"    {response[:150]}...")
-            
-            # Extract JSON
-            analysis = self.json_cleaner.extract_json(response)
-            
-            if not analysis:
-                print(f"    Warning: Could not extract valid JSON for section '{section.get('title')}'")
-                return self._create_fallback_analysis(section, content)
-            
-            # Add original section info and processing metadata
-            analysis['original_section'] = section
-            analysis['content_length'] = len(content)
-            analysis['chunk_id'] = section.get('chunk_id')
-            analysis['extraction_method'] = 'delimiter_based'
-            
-            print(f"    Successfully analyzed section with {len(analysis.get('offer_items', []))} items")
-            return analysis
-            
-        except Exception as e:
-            print(f"    Error analyzing section '{section.get('title')}': {e}")
-            return self._create_fallback_analysis(section, content, str(e))
+    def _build_item_context(self, item: Dict[str, Any], 
+                          main_group: Dict[str, Any], 
+                          sub_group: Dict[str, Any]) -> str:
+        """Build context information for item analysis"""
+        context_parts = [
+            f"Main Category: {main_group.get('name', 'Unknown')}",
+            f"Sub-Category: {sub_group.get('name', 'Unknown')}",
+            f"Item Position: {item.get('offer_item_id', 'Unknown')}",
+        ]
+        
+        # Add parent context for better understanding
+        if 'CHALEUR' in main_group.get('name', '').upper():
+            context_parts.append("Context: Heating/thermal distribution system")
+        elif 'TUYAUTERIE' in sub_group.get('name', '').upper():
+            context_parts.append("Context: Piping and tubing specifications")
+        elif 'ACCESSOIRE' in sub_group.get('name', '').upper():
+            context_parts.append("Context: Accessories and fittings")
+        
+        return '\n'.join(context_parts)
     
-    def _build_parent_context(self, section: Dict[str, Any], 
-                             flat_sections: List[Dict[str, Any]]) -> str:
-        """Build context from parent sections"""
-        parent_id = section.get('parent_section_id')
-        
-        if not parent_id:
-            return "No parent context available"
-        
-        # Find parent sections
-        parents = []
-        current_parent_id = parent_id
-        
-        while current_parent_id:
-            parent = next((s for s in flat_sections if s['section_id'] == current_parent_id), None)
-            if parent:
-                parents.append(parent)
-                current_parent_id = parent.get('parent_section_id')
-            else:
-                break
-        
-        # Build context string
-        if not parents:
-            return "No parent context found"
-        
-        context_parts = ["Parent hierarchy:"]
-        for parent in reversed(parents):  # Show from top level down
-            context_parts.append(
-                f"- Level {parent['level']}: {parent['title']} ({parent.get('section_type', 'unknown')})"
-            )
-        
-        return "\n".join(context_parts)
-    
-    def _create_fallback_analysis(self, section: Dict[str, Any], content: str, error: str = None) -> Dict[str, Any]:
-        """Create fallback analysis when processing fails"""
+    def _create_empty_details(self) -> Dict[str, Any]:
+        """Create empty details structure when analysis fails"""
         return {
-            'original_section': section,
-            'section_analysis': {
-                'section_id': section.get('section_id'),
-                'section_title': section.get('title'),
-                'section_type': section.get('section_type', 'technical_specs'),
-                'group_type': 'SUB',
-                'default_margin': 25,
-                'parent_section_id': section.get('parent_section_id')
+            "item_details": {
+                "supplier_id": "not_available",
+                "unit_quantity": None,
+                "unit_type": "MATERIAL",
+                "percentage": 0,
+                "unit": "not_available",
+                "unit_price": None,
+                "margin": 25,
+                "auction_discount": 0,
+                "supplier_discount_goal": 0,
+                "billing_percent_situations": [],
+                "gantt_schedules": [],
+                "progress": 0,
+                "employees_ids": [],
+                "article_id": "not_available",
+                "article_number": "not_available",
+                "desc_html": "<p>Details not available</p>",
+                "is_ttc": False,
+                "taxes_rate_percent": 0,
+                "apply_discount": False,
+                "isPageBreakBefore": False,
+                "isSellingPriceLocked": False,
+                "isInvalid": False,
+                "isCostPriceLocked": False,
+                "discount_value": 0,
+                "is_optional": False,
+                "variants": [],
+                "articles": []
             },
-            'offer_items': [],
-            'section_metadata': {
-                'total_items': 0,
-                'has_pricing': False,
-                'has_quantities': False,
-                'technical_specs': [],
-                'key_materials': []
-            },
-            'content_length': len(content),
-            'chunk_id': section.get('chunk_id'),
-            'extraction_method': 'fallback',
-            'error': error or 'Processing failed'
+            "additional_fields": {},
+            "extraction_metadata": {
+                "found_quantity": False,
+                "found_price": False,
+                "found_technical_specs": False,
+                "confidence_level": "none"
+            }
         }
+    
+    def _deep_copy_structure(self, structure: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a deep copy of the structure for processing"""
+        import json
+        return json.loads(json.dumps(structure))

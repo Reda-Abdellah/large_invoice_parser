@@ -6,9 +6,99 @@ def get_structure_prompt() -> PromptTemplate:
     return PromptTemplate(
             # input_variables=["chunk_content", "chunk_info"],
             input_variables=["chunk_info", "chunk_content", "previous_output"],
-            template= template_v4
+            template= template_v5
         )
 
+template_v5 = """
+            Extract offer items from this construction/engineering document chunk, maintaining hierarchical structure and avoiding duplicates.
+
+            Chunk Info: {chunk_info}
+
+            Previous Context (from earlier chunks):
+            {previous_context}
+
+            Content:
+            {chunk_content}
+
+            IMPORTANT - CHUNK OVERLAP HANDLING:
+            - These chunks are processed sequentially with overlapping content
+            - DO NOT repeat items that were already extracted in previous chunks
+            - If you see an item that appears in the previous context, SKIP it
+            - If an item appears to continue from previous chunks (same specifications, similar content), only extract the NEW parts
+
+            CONTINUITY RULES:
+            - If no clear main category (# header) is found in this chunk, assume items belong to the LAST main category from previous context
+            - If no clear sub-category (#### header) is found, assume items belong to the LAST sub-category from previous context
+            - Items without explicit grouping likely continue the current hierarchy from previous chunks
+
+            EXTRACTION RULES:
+            1. IGNORE: Image references, totals, summary lines, page headers/footers
+            2. IGNORE: Items already mentioned in previous context
+            3. IDENTIFY: NEW main categories (# headers like "243. A. DISTRIBUTION DE CHALEUR ACTIVITES")
+            4. IDENTIFY: NEW sub-categories (#### headers like "243. A. 1. Tuyauteries", "243. A. 2. Accessoires")
+            5. EXTRACT: Only NEW individual offer items from tables, lists, and descriptions
+
+            ITEM IDENTIFICATION:
+            - Table rows with specifications (DN sizes, diameters, quantities)
+            - Numbered items (1. Compteur de chaleur, 2. Vanne d'arrêt)
+            - Equipment descriptions with technical specs
+            - Material specifications with quantities and units
+            - Continuation of specifications from previous chunks (only NEW information)
+
+            HIERARCHY INFERENCE:
+            - If this chunk has items but no group headers, use the last active group from previous context
+            - If this chunk starts mid-specification, it likely continues the last item category
+            - Look for contextual clues like "suite" (continuation), numbering sequences, or similar technical patterns
+
+            For each NEW offer item, provide:
+            - Exact start and end delimiters for precise text extraction
+            - Clean item name/description
+            - Parent hierarchy (main category → sub-category → item)
+            - Indicate if this item continues a previous category
+
+            Return JSON format:
+            {{
+                "offer_item_groups": [
+                    {{
+                        "name": "Main Category Name (only if NEW or different from previous)",
+                        "group_type": "BASE",
+                        "is_continuation": false,
+                        "offer_groups": [
+                            {{
+                                "name": "Sub Category Name (only if NEW or different from previous)", 
+                                "group_type": "SUB",
+                                "is_continuation": false,
+                                "offer_items": [
+                                    {{
+                                        "name": "Item description",
+                                        "start_delimiter": "exact text that starts this item",
+                                        "end_delimiter": "exact text that ends this item",
+                                        "chunk_id": "current_chunk_id",
+                                        "estimated_content": "brief description of item specs",
+                                    }}
+                                ]
+                            }}
+                        ]
+                    }}
+                ],
+
+            }}
+
+            EXAMPLES from the content:
+            - Main: "DISTRIBUTION DE CHALEUR ACTIVITES" (BASE group)
+            - Sub: "Tuyauteries" (SUB group)  
+            - Items: "DN 100", "DN 80", "DN 65", etc. (individual offer items)
+            - Sub: "Accessoires" (SUB group)
+            - Items: "Compteur de chaleur", "Vanne d'arrêt", etc.
+
+            OVERLAP EXAMPLE:
+            - If previous chunk ended with "DN 80" and this chunk starts with "DN 80" followed by "DN 65", only extract "DN 65"
+            - If previous chunk had "Compteur de chaleur" and this chunk shows the same item with additional specs, only extract the NEW specifications
+
+            Focus on extracting only NEW purchasable/billable items with their context.
+            Be precise with delimiters and avoid any duplication from previous chunks.
+            When in doubt about hierarchy, use the last known group structure from previous context.
+            """
 template_v4 = """
             Analyze this construction/engineering offer markdown chunk and identify meaningful structural sections.
             Use the previous structural analysis to maintain continuity and proper section numbering.
