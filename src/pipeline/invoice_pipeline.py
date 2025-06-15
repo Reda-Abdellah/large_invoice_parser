@@ -24,8 +24,8 @@ class InvoicePipeline:
         
         # Initialize processors
         self.markdown_chunker = MarkdownChunker(config)
-        self.offer_item_extractor = StructureDelimiterExtractor(config)
-        self.section_analyzer = SectionDetailAnalyzer(config)  # Keep for item detail analysis
+        self.offer_item_extractor = StructureDelimiterExtractor(config)  # Formerly structure_extractor
+        self.section_analyzer = SectionDetailAnalyzer(config)  # Update these variable names for consistency
         self.translator = DocumentTranslator(config)
         
         # Build the graph
@@ -49,10 +49,11 @@ class InvoicePipeline:
         workflow.add_node("translate_to_english", self._translate_to_english_node)
         workflow.add_node("chunk_markdown", self._chunk_markdown_node)
         workflow.add_node("extract_offer_items", self._extract_structure_delimiters_node)
-        workflow.add_node("analyze_item_details", self._analyze_sections_detailed_node)  # Item detail analysis
+        workflow.add_node("analyze_item_details", self._analyze_sections_detailed_node)
         workflow.add_node("translate_to_french", self._translate_to_french_node)
+        # Remove _aggregate_format_node since it's not used
         
-        # Add edges
+        # Update edges accordingly
         workflow.set_entry_point("translate_to_english")
         workflow.add_edge("translate_to_english", "chunk_markdown")
         workflow.add_edge("chunk_markdown", "extract_offer_items")
@@ -108,7 +109,7 @@ class InvoicePipeline:
         return state
     
     def _extract_structure_delimiters_node(self, state: PipelineState) -> PipelineState:
-        """Phase 2: Extract structure with delimiters"""
+        """Phase 2: Extract offer items structure"""
         try:
             if state["overlapping_chunks"]:
                 structure_with_delimiters, structure_chunks = self.offer_item_extractor.extract_structure_from_chunks(
@@ -131,7 +132,7 @@ class InvoicePipeline:
         return state
     
     def _analyze_sections_detailed_node(self, state: PipelineState) -> PipelineState:
-        """Phase 3: Detailed analysis of individual offer items"""
+        """Phase 3: Analyze offer items"""
         try:
             if state["structure_with_delimiters"] and state["overlapping_chunks"]:
                 print("Phase 3: Analyzing individual offer items in detail...")
@@ -155,25 +156,6 @@ class InvoicePipeline:
                 
         except Exception as e:
             state["processing_errors"].append(f"Item detail analysis error: {str(e)}")
-        
-        return state
-    
-    def _aggregate_format_node(self, state: PipelineState) -> PipelineState:
-        """Phase 4: Aggregate and format final offer"""
-        try:
-            if state["structure_with_delimiters"]:
-                final_json = self.offer_aggregator.aggregate_and_format(
-                    state["structure_with_delimiters"]
-                )
-                state["final_json"] = final_json
-                
-                # Save final result
-                self._save_intermediate_result(
-                    self._get_result_filename('4_final'),
-                    final_json
-                )
-        except Exception as e:
-            state["processing_errors"].append(f"Aggregation error: {str(e)}")
         
         return state
     

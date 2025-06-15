@@ -5,10 +5,9 @@ from .invoice_models import ProcessedOffer
 
 class PipelineState(TypedDict):
     raw_markdown: str
-    translated_markdown: Optional[str]  # New: English translation
+    translated_markdown: Optional[str]
     overlapping_chunks: List[Dict[str, Any]]
     structure_with_delimiters: Optional[Dict[str, Any]]
-    section_analyses: List[Dict[str, Any]]
     final_json: Optional[ProcessedOffer]
-    final_json_translated: Optional[ProcessedOffer]  # New: French translation
+    final_json_translated: Optional[ProcessedOffer]
     processing_errors: List[str]

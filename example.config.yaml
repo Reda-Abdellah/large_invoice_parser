@@ -32,3 +32,20 @@ debug_json_responses: true  # Set to false in production
 enable_translation: false  # Set to false to disable translation steps
 source_language: "french"
 target_language: "english"
+
+# PDF conversion configuration (marker)
+marker:
+max_pages: null  # null for all pages, or specify a number
+languages: null  # null for auto-detect, or ["en", "fr"] for specific languages
+batch_multiplier: 2  # Higher values use more memory but may be faster
+
+# PDF processing options
+save_converted_markdown: true  # Save the converted markdown file
+save_extracted_images: false  # Save images extracted from PDF
+remove_page_numbers: true     # Remove page numbers from converted markdown
+fix_table_formatting: true    # Attempt to fix table formatting issues
+
+# Output configuration
+output_format: "json"
+include_raw_content: false
+include_processing_metadata: true
