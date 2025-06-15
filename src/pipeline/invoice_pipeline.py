@@ -137,25 +137,26 @@ class InvoicePipeline:
         return state
     
     def _analyze_sections_detailed_node(self, state: PipelineState) -> PipelineState:
-        """Phase 3: Detailed section-by-section analysis"""
+        """Phase 3: Detailed section-by-section analysis of level 3 items"""
         try:
-            if state["structure_with_delimiters"]:
+            if state["structure_with_delimiters"] and state["overlapping_chunks"]:
                 # Use translated content if available for analysis
                 content_for_analysis = state["translated_markdown"] or state["raw_markdown"]
                 
                 section_analyses = self.section_analyzer.analyze_sections_detailed(
                     state["structure_with_delimiters"],
-                    content_for_analysis
+                    content_for_analysis,
+                    state["overlapping_chunks"]  # Pass chunks for content extraction
                 )
                 state["section_analyses"] = section_analyses
                 
-                # Save analysis result
-                self._save_intermediate_result(
-                    self._get_result_filename('3_analysis'),
-                    section_analyses
-                )
+            else:
+                print("Warning: Missing structure or chunks for detailed analysis")
+                state["section_analyses"] = []
+                
         except Exception as e:
             state["processing_errors"].append(f"Section analysis error: {str(e)}")
+            state["section_analyses"] = []
         
         return state
     

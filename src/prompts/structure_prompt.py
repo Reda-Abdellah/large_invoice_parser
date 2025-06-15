@@ -4,9 +4,72 @@ from langchain.prompts import PromptTemplate
 
 def get_structure_prompt() -> PromptTemplate:
     return PromptTemplate(
-            input_variables=["chunk_content", "chunk_info"],
-            template= template_v3
+            # input_variables=["chunk_content", "chunk_info"],
+            input_variables=["chunk_info", "chunk_content", "previous_output"],
+            template= template_v4
         )
+
+template_v4 = """
+            Analyze this construction/engineering offer markdown chunk and identify meaningful structural sections.
+            Use the previous structural analysis to maintain continuity and proper section numbering.
+            
+            Chunk Info: {chunk_info}
+            
+            Content:
+            {chunk_content}
+            
+            Previous sections from earlier chunks:
+            {previous_output}
+            
+            IMPORTANT GUIDELINES:
+            1. IGNORE: Image references, headers, footers, page numbers
+            2. IGNORE: Summary lines like "TOTAL X.X.X Fr. ..................."
+            3. IGNORE: Report lines like "A reporter Fr. ................."
+            4. FOCUS ON: Actual work sections, technical specifications, and item categories
+            5. MAINTAIN CONTINUITY: Use previous section IDs to continue numbering logically
+            
+            Section Level Rules & ID Format:
+            - Level 1 (Main work categories): section_id = (e.g., "1", "2", "3", etc.)
+            - Level 2 (Sub-categories): section_id = (e.g., "1.1", "1.2", "2.1", etc.)
+            - Level 3 (Detailed items): section_id = (e.g., "1.1.1", "1.2.2", "2.1.1", etc.)
+            For instance section_id = X.Y.Z means it is a level 3 structure child of level 2 section Y and level 1 section X.
+            section_id should be unique across the document and should be incremental based on level.
+            
+            NUMBERING LOGIC:
+            - If this chunk continues a section from previous chunks, use the next logical ID
+            - If this chunk starts a new main category, increment the main ID
+            - Don't confuse markdown numbering (like "1. Circuit eau normale") with section_id
+            - The section_id tracks the document structure, not the markdown formatting
+            
+            For each MEANINGFUL section, provide:
+            - Hierarchical section_id following the X.Y.Z format
+            - Clean title from the markdown (keep it in the same language as the chunk) 
+            - Precise delimiters for exact text extraction
+            
+            Return JSON format:
+            {{
+                "sections": [
+                    {{
+                        "section_id": "X.Y.Z",  # Unique ID for this section
+                        "title": "clean section title without formatting marks",
+                        "level": 1|2|3,
+                        "section_type": "work_category|materials|accessories|technical_specs|pricing",
+                        "start_delimiter": "exact text that starts this section",
+                        "end_delimiter": "exact text that ends this section or starts next section",
+                        "estimated_content": "what this section contains (items, specifications, etc.)",
+                        "parent_section_id": "1.2",
+                        "continues_from_previous": false,
+                    }}
+                ]
+            }}
+            
+            EXAMPLES:
+            - If previous chunk ended with section "1.2", and this chunk has items in that category, use "1.2.1", "1.2.2"
+            - If this chunk starts a completely new main category, use "2" (next main ID)
+            - If continuing sub-category "1.1" from previous chunk, next items would be "1.1.3", "1.1.4", etc.
+            
+            Be precise with delimiters and focus on actual work content, not formatting artifacts.
+            """
 
 template_v3="""
             Analyze this construction/engineering offer markdown chunk and identify meaningful structural sections.
