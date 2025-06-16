@@ -22,7 +22,7 @@ class SectionDetailAnalyzer:
             config.get('context_window_size', 8192)
         )
         
-        self.detail_prompt = get_section_detail_prompt()
+        self.item_detail_prompt = get_section_detail_prompt()
     
     def analyze_sections_detailed(self, structure_with_delimiters: Dict[str, Any], 
                                  content_for_analysis: str,

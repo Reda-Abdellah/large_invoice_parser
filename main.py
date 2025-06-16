@@ -10,7 +10,7 @@ from dataclasses import dataclass
 import os
 
 from src.utils.io import read_input_file
-os.environ['NO_PROXY'] = "http://127.0.0.1,localhost,http://10.8.13.21"
+os.environ['NO_PROXY'] = "http://127.0.0.1,localhost,http://10.8.13.21,https://models.datalab.to"
 
 
 @dataclass
@@ -53,7 +53,7 @@ def process_invoice(pipeline: InvoicePipeline,
         errors = "\n".join(result["processing_errors"])
         return ProcessingResult(success=False, output_path=None, 
                               error=f"Processing errors occurred:\n{errors}",
-                              converted_markdown_path=converted_markdown_path)
+                              )
 
     # Get appropriate output data
     output_data = None
@@ -66,7 +66,7 @@ def process_invoice(pipeline: InvoicePipeline,
     else:
         return ProcessingResult(success=False, output_path=None,
                               error="No valid output data generated",
-                              converted_markdown_path=converted_markdown_path)
+                              )
 
     # Save results
     try:
@@ -97,12 +97,11 @@ def process_invoice(pipeline: InvoicePipeline,
             total_items=total_items,
             total_amount=output_data_dict.get('total_amount', 0),
             currency=output_data_dict.get('currency', 'EUR'),
-            converted_markdown_path=converted_markdown_path
         )
     except Exception as e:
         return ProcessingResult(success=False, output_path=None,
                               error=f"Failed to save output: {str(e)}",
-                              converted_markdown_path=converted_markdown_path)
+                            )
 
 def main():
     parser = argparse.ArgumentParser(description='Process PDF or markdown invoices with translation')

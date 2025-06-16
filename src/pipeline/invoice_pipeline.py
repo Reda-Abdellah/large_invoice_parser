@@ -8,7 +8,6 @@ from ..models.pipeline_state import PipelineState
 from ..processors.markdown_chunker import MarkdownChunker
 from ..processors.structure_delimiter_extractor import StructureDelimiterExtractor
 from ..processors.section_detail_analyzer import SectionDetailAnalyzer
-from ..processors.offer_aggregator import OfferAggregator
 from ..processors.translator import DocumentTranslator
 
 class InvoicePipeline:
