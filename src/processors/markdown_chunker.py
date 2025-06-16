@@ -74,11 +74,11 @@ class MarkdownChunker:
         print(f"Created {total_chunks} overlapping chunks from {content_length} characters")
         return chunks
     
-    def _find_natural_break(self, content: str, start: int, preferred_end: int) -> int:
+    def _find_natural_break(self, content: str, start: int, preferred_end: int, window: int= 150) -> int:
         """Find natural break point near preferred end"""
         # Look for paragraph breaks first
-        search_start = max(start, preferred_end - 200)
-        search_end = min(len(content), preferred_end + 100)
+        search_start = max(start, preferred_end - window)
+        search_end = min(len(content), preferred_end + window)
         
         # Look for double newlines (paragraph breaks)
         for i in range(search_end, search_start, -1):

@@ -60,7 +60,8 @@ class StructureDelimiterExtractor:
             chunk_info = f"Chunk {chunk['chunk_index'] + 1}/{chunk['total_chunks']} | Chars: {chunk['start_char']}-{chunk['end_char']}"
             
             # Clean content
-            cleaned_content = self._clean_chunk_content(chunk['content'])
+            # cleaned_content = self._clean_chunk_content(chunk['content'])
+            cleaned_content = chunk['content']
             
             # Build context from previous chunks
             previous_context = self._build_previous_context()
