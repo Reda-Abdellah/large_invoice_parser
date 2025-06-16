@@ -71,6 +71,12 @@ The parser generates structured JSON output containing:
 - Item details and quantities
 - Pricing information (when available)
 
+## Pipeline Overview
+
+![Invoice Processing Pipeline](figure/figure.png)
+
+The diagram above illustrates the complete processing pipeline from input file to final JSON output, including optional translation steps and detailed analysis phases.
+
 ## Pipeline Phases
 
 1. 🔄 Document Translation (optional)
