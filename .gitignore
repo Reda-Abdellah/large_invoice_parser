@@ -5,3 +5,5 @@ recursive_analyse/
 __pycache__/
 config.yaml
 large_invoice_parser/
+.env
+settings.json

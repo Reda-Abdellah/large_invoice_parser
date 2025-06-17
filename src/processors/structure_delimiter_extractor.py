@@ -2,19 +2,16 @@
 from typing import List, Dict, Any
 import uuid
 
+from ..utils.enhanced_llm_client import EnhancedLLMClient
+
 from ..prompts.structure_prompt import get_structure_prompt
-from ..utils.ollama_client import EnhancedOllamaClient
 import re
 from ..utils.json_cleaner import JSONResponseCleaner
 
 class StructureDelimiterExtractor:
     def __init__(self, config: Dict[str, Any]):
         self.config = config
-        self.ollama_client = EnhancedOllamaClient(
-            base_url=config.get('ollama_base_url', 'http://localhost:11434'),
-            context_window_size=config.get('context_window_size', 8192),
-            timeout=config.get('timeout', 300)
-        )
+        self.llm_client = EnhancedLLMClient(config)
 
         self.json_cleaner = JSONResponseCleaner()
         
@@ -24,6 +21,8 @@ class StructureDelimiterExtractor:
         )
         
         self.extraction_prompt = get_structure_prompt()
+        # Use task-specific LLM
+        self.task_name = "structure_extraction"
         
     
     def extract_structure_from_chunks(self, chunks: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -65,12 +64,17 @@ class StructureDelimiterExtractor:
             previous_context = self._build_previous_context()
             
             response = self.llm.invoke(
+                self.task_name,
                 self.extraction_prompt.format(
                     chunk_content=cleaned_content,
                     chunk_info=chunk_info,
                     previous_context=previous_context
                 )
             )
+            # Log provider info for debugging
+            provider_info = self.llm_client.get_provider_info(self.task_name)
+            print(f"Used {provider_info['provider']}/{provider_info['model']} for structure extraction")
+            
             
             print(f"    Extracting from chunk {chunk['chunk_index']}...")
             

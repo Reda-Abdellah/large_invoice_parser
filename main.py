@@ -10,7 +10,7 @@ from dataclasses import dataclass
 import os
 
 from src.utils.io import read_input_file
-os.environ['NO_PROXY'] = "http://127.0.0.1,localhost,http://10.8.13.21,https://models.datalab.to"
+os.environ['NO_PROXY'] = "http://127.0.0.1,localhost,http://10.8.13.21,https://models.datalab.to,s3://text_recognition/2025_05_16"
 
 
 @dataclass

@@ -1,9 +1,37 @@
 # config.yaml
-# Model configuration
-# structure_model: "llama3.2:3b"  # Lighter model for structure extraction
-# analysis_model: "llama3.2:7b"   # More capable model for detailed analysis
-structure_model: "deepseek-r1:latest"  
-analysis_model: "deepseek-r1:latest"
+
+# config.yaml
+llm_providers:
+  structure_extraction:
+    provider: "edenai"
+    model: "openai/gpt-3.5-turbo"
+    temperature: 0.3
+    max_tokens: 4000
+    api_key: "${EDENAI_API_KEY}"
+  
+  detailed_analysis:
+    provider: "openai"
+    model: "gpt-4"
+    temperature: 0.1
+    max_tokens: 8000
+    api_key: "${OPENAI_API_KEY}"
+  
+  translation:
+    provider: "ollama"
+    model: "llama3.2:7b"
+    base_url: "http://localhost:11434"
+    temperature: 0.2
+
+# Fallback configuration
+fallback_providers:
+  - provider: "ollama"
+    model: "llama3.2:3b"
+  - provider: "edenai"
+    model: "anthropic/claude-3-haiku"
+
+# # Model configuration
+# structure_model: "deepseek-r1:latest"  
+# analysis_model: "deepseek-r1:latest"
 
 # New chunking configuration
 chunk_size: 4000          # Characters per chunk

@@ -1,15 +1,20 @@
 # Large Invoice Parser
 
-A Python pipeline for processing and analyzing construction/engineering invoices and technical specifications, with support for multi-language processing.
+A comprehensive Python pipeline for processing and analyzing construction/engineering invoices and technical specifications with multi-language support and flexible LLM provider integration.
 
-## Features
+## ✨ Features
 
-- 📄 Parse PDF and Markdown invoice documents
-- 🔍 Extract hierarchical section structures
-- 🔄 Smart document chunking with context preservation
-- 🌐 French/English translation support
-- 💡 Intelligent section and item analysis
-- 📊 Detailed output in JSON format
+- 📄 **Multi-format Support**: Process PDF and Markdown documents seamlessly
+- 🔍 **Intelligent Structure Extraction**: Hierarchical section analysis with context preservation
+- 🤖 **Flexible LLM Integration**: Support for OpenAI, EdenAI, and local Ollama models
+- 🔄 **Smart Chunking**: Context-aware document segmentation with overlapping chunks
+- 🌐 **Multi-language Processing**: French/English translation with technical term preservation
+- 💡 **Advanced Analysis**: Detailed item extraction with specifications and pricing
+- 📊 **Structured Output**: Comprehensive JSON format with hierarchical organization
+- ⚡ **Production Ready**: Scalable architecture with monitoring and error handling
+
+## 🚀 Quick Start
+
 
 ## Installation
 
@@ -54,13 +59,39 @@ Options:
 Create a `config.yaml` file to customize the pipeline:
 
 ```yaml
-results_dir: "pipeline_results"
+#LLM Provider Configuration
+
+llm_providers:
+structure_extraction:
+provider: "edenai" # or "openai", "ollama"
+model: "openai/gpt-3.5-turbo"
+temperature: 0.3
+api_key: "${EDENAI_API_KEY}"
+
+detailed_analysis:
+provider: "openai"
+model: "gpt-4"
+temperature: 0.1
+api_key: "${OPENAI_API_KEY}"
+
+
+#Processing Configuration
+chunk_size: 4000
+overlap_size: 400
 context_window_size: 8192
 max_context_window: 32768
-structure_model: "llama3.2:3b"
-analysis_model: "llama3.2:7b"
-max_chunk_size: 2000
+
+
+
+#Translation Settings
 enable_translation: true
+source_language: "french"
+target_language: "english"
+
+#PDF Processing
+save_converted_markdown: true
+remove_page_numbers: true
+fix_table_formatting: true
 ```
 
 ## Output Structure
@@ -90,26 +121,10 @@ The diagram above illustrates the complete processing pipeline from input file t
 - Python 3.11+
 - See `requirements.txt` for package dependencies
 
-## License
+## 📄 License
 
-MIT License
+MIT License - see [LICENSE](LICENSE) file for details.
 
-Copyright (c) 2025 Large Invoice Parser Contributors
+---
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+**Built with ❤️ for AI and engineering industry**
