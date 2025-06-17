@@ -1,5 +1,3 @@
-
-
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -18,7 +16,11 @@ def convert_pdf_to_markdown(pdf_path: str, config: Dict[str, Any]) -> str:
         
         # Optionally save the converted markdown for debugging
         if config.get('save_converted_markdown', False):
-            markdown_path = f"{Path(pdf_path).stem}_converted.md"
+            results_dir = Path(config.get('results_dir', 'results'))
+            # Create results directory if it doesn't exist
+            results_dir.mkdir(parents=True, exist_ok=True)
+            
+            markdown_path = results_dir / f"{Path(pdf_path).stem}_converted.md"
             with open(markdown_path, 'w', encoding='utf-8') as f:
                 f.write(markdown_content)
             print(f"Converted markdown saved to: {markdown_path}")
@@ -40,7 +42,10 @@ def read_input_file(input_file: str, config: Dict[str, Any]) -> tuple[str, Optio
         
         # Save converted markdown if requested
         if config.get('save_converted_markdown', True):
-            converted_path = f"{Path(input_file).stem}_converted.md"
+            results_dir = Path(config.get('results_dir', 'results'))
+            results_dir.mkdir(parents=True, exist_ok=True)
+            
+            converted_path = results_dir / f"{Path(input_file).stem}_converted.md"
             with open(converted_path, 'w', encoding='utf-8') as f:
                 f.write(markdown_content)
             print(f"Converted markdown saved to: {converted_path}")
