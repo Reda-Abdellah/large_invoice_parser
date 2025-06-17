@@ -22,6 +22,7 @@ class ProcessingResult:
     total_amount: float = 0.0
     currency: str = "EUR"
     error: Optional[str] = None
+    converted_markdown_path: Optional[str] = None
 
 def load_config(config_path: str = "config.yaml") -> Dict[str, Any]:
     """Load configuration from YAML file"""
@@ -36,7 +37,6 @@ def process_invoice(pipeline: InvoicePipeline,
                    config: Dict[str, Any],
                    output_path: Optional[str] = None,
                    use_french: bool = False) -> ProcessingResult:
-    """Process a single invoice file and return results"""
     try:
         # Read input file (PDF or markdown)
         markdown_content, converted_markdown_path = read_input_file(input_file, config)
@@ -97,10 +97,12 @@ def process_invoice(pipeline: InvoicePipeline,
             total_items=total_items,
             total_amount=output_data_dict.get('total_amount', 0),
             currency=output_data_dict.get('currency', 'EUR'),
+            converted_markdown_path=converted_markdown_path  # Add this line
         )
     except Exception as e:
         return ProcessingResult(success=False, output_path=None,
                               error=f"Failed to save output: {str(e)}",
+                              converted_markdown_path=converted_markdown_path  # Add this line
                             )
 
 def main():
