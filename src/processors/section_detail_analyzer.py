@@ -1,26 +1,20 @@
 # src/processors/section_detail_analyzer.py
 from typing import List, Dict, Any, Optional
-from langchain.prompts import PromptTemplate
+
+from ..utils.enhanced_llm_client import EnhancedLLMClient
 
 from ..prompts.section_details_prompt import get_section_detail_prompt
 from ..utils.json_cleaner import JSONResponseCleaner
-from ..utils.ollama_client import EnhancedOllamaClient
 import re
 
 class SectionDetailAnalyzer:
     def __init__(self, config: Dict[str, Any]):
         self.config = config
-        self.ollama_client = EnhancedOllamaClient(
-            base_url=config.get('ollama_base_url', 'http://localhost:11434'),
-            context_window_size=config.get('context_window_size', 8192),
-            timeout=config.get('timeout', 300)
-        )
-        self.json_cleaner = JSONResponseCleaner()
         
-        self.llm = self.ollama_client.create_llm_with_context(
-            config.get('analysis_model', 'llama3.2:7b'),
-            config.get('context_window_size', 8192)
-        )
+        self.llm_client = EnhancedLLMClient(config)
+        self.task_name = "structure_extraction"
+
+        self.json_cleaner = JSONResponseCleaner()
         
         self.item_detail_prompt = get_section_detail_prompt()
     
@@ -140,7 +134,8 @@ class SectionDetailAnalyzer:
                 item_info += f" | End Delimiter: {item.get('end_delimiter', 'None')}"
             
             # Analyze with LLM
-            response = self.llm.invoke(
+            response = self.llm_client.invoke(
+                self.task_name,
                 self.item_detail_prompt.format(
                     item_content=item_content,
                     item_info=item_info,

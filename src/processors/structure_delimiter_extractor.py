@@ -12,14 +12,8 @@ class StructureDelimiterExtractor:
     def __init__(self, config: Dict[str, Any]):
         self.config = config
         self.llm_client = EnhancedLLMClient(config)
-
         self.json_cleaner = JSONResponseCleaner()
-        
-        self.llm = self.ollama_client.create_llm_with_context(
-            config.get('structure_model', 'llama3.2:3b'),
-            config.get('context_window_size', 8192)
-        )
-        
+    
         self.extraction_prompt = get_structure_prompt()
         # Use task-specific LLM
         self.task_name = "structure_extraction"
@@ -63,7 +57,7 @@ class StructureDelimiterExtractor:
             # Build context from previous chunks
             previous_context = self._build_previous_context()
             
-            response = self.llm.invoke(
+            response = self.llm_client.invoke(
                 self.task_name,
                 self.extraction_prompt.format(
                     chunk_content=cleaned_content,

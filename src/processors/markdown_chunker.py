@@ -1,7 +1,6 @@
 # src/processors/markdown_chunker.py
 from typing import List, Dict, Any
 import hashlib
-from ..utils.ollama_client import EnhancedOllamaClient
 
 class MarkdownChunker:
     def __init__(self, config: Dict[str, Any]):
@@ -10,9 +9,6 @@ class MarkdownChunker:
         self.overlap_size = config.get('overlap_size', 400)  # Overlap between chunks
         self.context_window_size = config.get('context_window_size', 8192)
         
-        self.ollama_client = EnhancedOllamaClient(
-            context_window_size=self.context_window_size
-        )
     
     def create_overlapping_chunks(self, markdown_content: str) -> List[Dict[str, Any]]:
         """Create overlapping chunks from markdown content"""
@@ -28,7 +24,7 @@ class MarkdownChunker:
                 'content': markdown_content,
                 'start_char': 0,
                 'end_char': content_length,
-                'estimated_tokens': self.ollama_client.estimate_tokens(markdown_content),
+                'estimated_tokens': estimate_tokens(markdown_content),
                 'overlap_with_previous': False,
                 'overlap_with_next': False
             })
@@ -54,7 +50,7 @@ class MarkdownChunker:
                 'content': chunk_content,
                 'start_char': start,
                 'end_char': end,
-                'estimated_tokens': self.ollama_client.estimate_tokens(chunk_content),
+                'estimated_tokens': estimate_tokens(chunk_content),
                 'overlap_with_previous': chunk_index > 0,
                 'overlap_with_next': end < content_length
             })
@@ -102,3 +98,23 @@ class MarkdownChunker:
         """Generate unique chunk ID"""
         content_hash = hashlib.md5(content.encode()).hexdigest()[:8]
         return f"chunk_{index}_{content_hash}"
+
+
+
+
+def estimate_tokens(text: str) -> int:
+    """Rough estimation of token count (1 token ≈ 0.75 words)"""
+    word_count = len(text.split())
+    return int(word_count / 0.75)
+
+def check_context_requirements(text: str, 
+                                context_size: int) -> Dict[str, Any]:
+    """Check if text fits within context window"""
+    estimated_tokens = estimate_tokens(text)
+    # print(estimated_tokens <= context_size)
+    return {
+        "estimated_tokens": estimated_tokens,
+        "context_size": context_size,
+        "fits_in_context": estimated_tokens <= context_size,
+        "utilization_percentage": (estimated_tokens / context_size) * 100
+    }

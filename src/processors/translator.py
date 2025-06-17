@@ -1,61 +1,18 @@
 # src/processors/translator.py
 from typing import Dict, Any, List, Optional
-from langchain.prompts import PromptTemplate
-from ..utils.ollama_client import EnhancedOllamaClient
+from ..utils.enhanced_llm_client import EnhancedLLMClient
+from ..prompts.fr_to_en_translation_prompt import fr_to_en_prompt, en_to_fr_prompt
 import re
 
 class DocumentTranslator:
     def __init__(self, config: Dict[str, Any]):
         self.config = config
-        self.ollama_client = EnhancedOllamaClient(
-            base_url=config.get('ollama_base_url', 'http://localhost:11434'),
-            context_window_size=config.get('context_window_size', 8192),
-            timeout=config.get('timeout', 300)
-        )
+        self.llm_client = EnhancedLLMClient(config)
+        # Use task-specific LLM
+        self.task_name = "translation"
+        self.fr_to_en_prompt = fr_to_en_prompt
+        self.en_to_fr_prompt = en_to_fr_prompt
         
-        # Use a capable model for translation
-        translation_model = config.get('translation_model', config.get('analysis_model', 'llama3.2:7b'))
-        self.llm = self.ollama_client.create_llm_with_context(
-            translation_model,
-            config.get('context_window_size', 8192)
-        )
-        
-        self.fr_to_en_prompt = PromptTemplate(
-            input_variables=["french_content"],
-            template="""
-            Translate this French construction/engineering document to English.
-            Preserve the exact markdown structure, formatting, headers, and technical specifications.
-            Keep technical terms, measurements, and reference numbers unchanged.
-            
-            IMPORTANT:
-            - Maintain all markdown formatting (headers, tables, lists)
-            - Keep technical specifications like "DN 100", "PN16", measurements in original form
-            - Preserve reference numbers and codes (like "CFC 243.A")
-            - Translate only descriptive text, not technical data
-            
-            French content:
-            {french_content}
-            
-            Return the English translation maintaining exact formatting:
-            """
-        )
-        
-        self.en_to_fr_prompt = PromptTemplate(
-            input_variables=["english_content", "original_french_terms"],
-            template="""
-            Translate this English construction/engineering content back to French.
-            Use the original French technical terms and maintain professional construction terminology.
-            
-            Original French technical terms to preserve:
-            {original_french_terms}
-            
-            English content to translate:
-            {english_content}
-            
-            Return the French translation using proper construction terminology:
-            """
-        )
-    
     def translate_markdown_to_english(self, french_markdown: str) -> Optional[str]:
         """Translate French markdown to English while preserving structure"""
         if not self.config.get('enable_translation', False):
@@ -71,7 +28,8 @@ class DocumentTranslator:
             for i, chunk in enumerate(chunks, 1):
                 print(f"  Translating chunk {i}/{len(chunks)}")
                 
-                translated_chunk = self.llm.invoke(
+                translated_chunk = self.llm_client.invoke(
+                    self.task_name,
                     self.fr_to_en_prompt.format(french_content=chunk)
                 )
                 
@@ -87,7 +45,7 @@ class DocumentTranslator:
             print(f"Error translating markdown to English: {e}")
             return None
     
-    def translate_offer_to_french(self, processed_offer: 'ProcessedOffer') -> Optional['ProcessedOffer']:
+    def translate_offer_to_french(self, processed_offer= 'ProcessedOffer'):
         """Translate processed offer back to French"""
         if not self.config.get('enable_translation', False):
             return None
@@ -173,7 +131,8 @@ class DocumentTranslator:
         for field in fields_to_translate:
             if field in offer_dict and offer_dict[field]:
                 try:
-                    translated = self.llm.invoke(
+                    translated = self.llm_client.invoke(
+                        self.task_name,
                         self.en_to_fr_prompt.format(
                             english_content=offer_dict[field],
                             original_french_terms=french_terms
@@ -191,7 +150,8 @@ class DocumentTranslator:
             # Translate group name
             if 'name' in group and group['name']:
                 try:
-                    translated_name = self.llm.invoke(
+                    translated_name = self.llm_client.invoke(
+                        self.task_name,
                         self.en_to_fr_prompt.format(
                             english_content=group['name'],
                             original_french_terms=french_terms
@@ -226,7 +186,8 @@ class DocumentTranslator:
                             # Extract text from HTML for translation
                             text_content = re.sub(r'<[^>]+>', '', html_content)
                             if text_content.strip():
-                                translated_text = self.llm.invoke(
+                                translated_text = self.llm_client.invoke(
+                                    self.task_name,
                                     self.en_to_fr_prompt.format(
                                         english_content=text_content,
                                         original_french_terms=french_terms
@@ -235,7 +196,8 @@ class DocumentTranslator:
                                 # Rebuild HTML
                                 item[field] = f"<p>{translated_text.strip()}</p>"
                         else:
-                            translated = self.llm.invoke(
+                            translated = self.llm_client.invoke(
+                                self.task_name,
                                 self.en_to_fr_prompt.format(
                                     english_content=item[field],
                                     original_french_terms=french_terms
